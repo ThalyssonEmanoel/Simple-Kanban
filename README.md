@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Sistema Kanban
 
-## Getting Started
+Sistema simples de Kanban feito com Next.js, Supabase Auth e PostgreSQL via Prisma.
 
-First, run the development server:
+Esse projeto tem as seguintes funcionalidades:
+
+- Criação de projetos;
+- Entrar em projetos com código de convite;
+- Organizar tarefas em colunas;
+- Filtragem de cards por texto, responsável e prioridade;
+- Comentários, anexo de arquivos e acompanhamento atividades;
+- Visualização de métricas do projeto.
+
+## Ferramentas
+
+- Next.js 16;
+- Javascript;
+- Prisma Client;
+- Supabase(autenticação por email/senha e Google próprios dele).
+
+## Pré-requisitos
+
+- Node.js 20+
+- npm
+- Docker (Logo terá imagens para subir o projeto locamente)
+
+## Configuração do ambiente
+
+Criar um arquivo `.env` na raiz com essas variáveis e utilizar as variáveis presentes no arquivo `.env.example`
+substituindo os valores dela.
+
+## Instalação
+
+```bash
+npm install
+```
+## Conexão com o Banco de dados
+
+Seguir os passos estabelecido em **/docs/Connection**.
+
+## Rodando localmente
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+e clicar em:
+
+```text
+http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Fluxo básico de uso
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+1. Crie uma conta ou entre com email/senha ou com a autenticação com o google;
+2. Crie um projeto novo;
+3. Compartilhe o código do projeto com outras pessoas;
+4. Crie colunas e cards;
+5. Arraste cards entre colunas para atualizar o status;
+6. Acompanhe métricas na página de métricas do projeto.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Estrutura principal
 
-## Learn More
+```text
+src/
+	app/
+		api/                 # rotas da API (cards, colunas, projetos, métricas...)
+		login/               # tela de login
+		register/            # tela de cadastro
+		project/[projectId]/ # quadro, métricas e configurações
+	components/
+		board/               # componentes do kanban
+		layout/              # navbar e notificações
+	lib/
+		auth.js              # controle de sessão/autorização
+		prisma.js            # cliente prisma
+		supabase/            # clientes supabase
+prisma/
+	schema.prisma          # schema do banco
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Observações
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Uploads são salvos localmente em `public/uploads`
