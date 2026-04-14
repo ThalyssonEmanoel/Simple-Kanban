@@ -81,22 +81,6 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
     loadCard();
   }
 
-  async function handleUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("cardId", cardId);
-
-    await fetch("/api/attachments", {
-      method: "POST",
-      body: formData,
-    });
-
-    loadCard();
-  }
-
   if (loading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -174,7 +158,7 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
           <div className="flex-1 border-r p-6">
             {/* Tabs */}
             <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
-              {["details", "comments", "attachments", "history"].map((t) => (
+              {["details", "comments", "history"].map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -186,7 +170,6 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
                 >
                   {t === "details" && "Detalhes"}
                   {t === "comments" && `Comentários (${card.comments.length})`}
-                  {t === "attachments" && `Anexos (${card.attachments.length})`}
                   {t === "history" && "Histórico"}
                 </button>
               ))}
@@ -260,46 +243,6 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
                   {card.comments.length === 0 && (
                     <p className="text-center text-sm text-gray-400 py-4">
                       Nenhum comentário ainda
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Attachments tab */}
-            {tab === "attachments" && (
-              <div>
-                <label className="mb-4 flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-4 text-sm text-gray-500 hover:border-primary hover:text-primary transition-colors">
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                  Fazer upload de arquivo
-                  <input type="file" className="hidden" onChange={handleUpload} />
-                </label>
-
-                <div className="space-y-2">
-                  {card.attachments.map((a) => (
-                    <a
-                      key={a.id}
-                      href={a.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 rounded-lg bg-gray-50 p-3 hover:bg-gray-100 transition-colors"
-                    >
-                      <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <div>
-                        <p className="text-sm font-medium text-gray-700">{a.filename}</p>
-                        <p className="text-xs text-gray-400">
-                          por {a.uploader.name} em {formatDateTime(a.createdAt)}
-                        </p>
-                      </div>
-                    </a>
-                  ))}
-                  {card.attachments.length === 0 && (
-                    <p className="text-center text-sm text-gray-400 py-4">
-                      Nenhum anexo ainda
                     </p>
                   )}
                 </div>

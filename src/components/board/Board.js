@@ -4,7 +4,7 @@ import { useState } from "react";
 import { DragDropContext, Droppable } from "@hello-pangea/dnd";
 import Column from "./Column";
 
-export default function Board({ project, filters, onCardClick, onRefresh }) {
+export default function Board({ project, filters, onCardClick, onRefresh, userRole }) {
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
 
@@ -103,6 +103,7 @@ export default function Board({ project, filters, onCardClick, onRefresh }) {
                 project={project}
                 onCardClick={onCardClick}
                 onRefresh={onRefresh}
+                userRole={userRole}
               />
             ))}
             {provided.placeholder}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import Board from "@/components/board/Board";
 import Navbar from "@/components/layout/Navbar";
 import FilterBar from "@/components/board/FilterBar";
@@ -10,9 +11,11 @@ import CardModal from "@/components/board/CardModal";
 export default function ProjectPage() {
   const { projectId } = useParams();
   const router = useRouter();
+  const supabase = createClient();
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCard, setSelectedCard] = useState(null);
+  const [userRole, setUserRole] = useState(null);
   const [filters, setFilters] = useState({
     search: "",
     assignee: "",
@@ -24,22 +27,21 @@ export default function ProjectPage() {
     if (res.ok) {
       const data = await res.json();
       setProject(data);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && data.members) {
+        const member = data.members.find((m) => m.user.email === user.email);
+        setUserRole(member?.role || null);
+      }
     } else if (res.status === 401 || res.status === 403) {
       router.push("/");
     }
     setLoading(false);
-  }, [projectId, router]);
+  }, [projectId, router, supabase.auth]);
 
   useEffect(() => {
     loadProject();
   }, [loadProject]);
-
-  function getUserRole() {
-    if (!project) return null;
-    // We need to get current user ID from somewhere
-    // For now, check from project members
-    return null;
-  }
 
   if (loading) {
     return (
@@ -71,6 +73,7 @@ export default function ProjectPage() {
           filters={filters}
           onCardClick={setSelectedCard}
           onRefresh={loadProject}
+          userRole={userRole}
         />
       </div>
       {selectedCard && (

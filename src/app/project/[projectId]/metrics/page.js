@@ -36,7 +36,7 @@ export default function MetricsPage() {
   const maxColumnCount = Math.max(...metrics.columnStats.map((c) => c.count), 1);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <header className="border-b bg-white shadow-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-4">
@@ -80,15 +80,15 @@ export default function MetricsPage() {
             </p>
           </div>
           <div className="rounded-xl bg-white p-5 shadow-sm border border-gray-200">
-            <p className="text-sm text-gray-500">Lead Time Médio</p>
-            <p className="mt-1 text-3xl font-bold text-blue-600">
-              {metrics.avgLeadTimeHours}h
+            <p className="text-sm text-gray-500">Quantidade de Tarefas A fazer</p>
+            <p className="mt-1 text-3xl font-bold text-amber-600">
+              {metrics.todoCount}
             </p>
           </div>
           <div className="rounded-xl bg-white p-5 shadow-sm border border-gray-200">
-            <p className="text-sm text-gray-500">Tarefas Atrasadas</p>
+            <p className="text-sm text-gray-500">Tarefas Não Finalizadas</p>
             <p className="mt-1 text-3xl font-bold text-red-600">
-              {metrics.overdueCards}
+              {metrics.notFinishedCount}
             </p>
           </div>
           <div className="rounded-xl bg-white p-5 shadow-sm border border-gray-200">
@@ -157,8 +157,8 @@ export default function MetricsPage() {
                       <p className="text-xs text-gray-400">Concluídas</p>
                     </div>
                     <div className="text-center">
-                      <p className="font-bold text-blue-600">{m.inProgress}</p>
-                      <p className="text-xs text-gray-400">Em andamento</p>
+                      <p className="font-bold text-amber-600">{m.todo}</p>
+                      <p className="text-xs text-gray-400">Pendentes</p>
                     </div>
                     <div className="text-center">
                       <p className="font-bold text-gray-600">{m.total}</p>

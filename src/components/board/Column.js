@@ -5,7 +5,7 @@ import { Draggable, Droppable } from "@hello-pangea/dnd";
 import Card from "./Card";
 import AddCard from "./AddCard";
 
-export default function Column({ column, cards, index, project, onCardClick, onRefresh }) {
+export default function Column({ column, cards, index, project, onCardClick, onRefresh, userRole }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(column.name);
   const [showMenu, setShowMenu] = useState(false);
@@ -41,13 +41,13 @@ export default function Column({ column, cards, index, project, onCardClick, onR
   }
 
   const columnColors = {
-    "To Do": "bg-gray-500",
-    Doing: "bg-blue-500",
-    Review: "bg-yellow-500",
-    Done: "bg-green-500",
+    "A fazer": "bg-amber-500",
+    "Finalizadas": "bg-green-600",
+    "To Do": "bg-amber-500",
+    "Done": "bg-green-600",
   };
 
-  const dotColor = columnColors[column.name] || "bg-purple-500";
+  const dotColor = columnColors[column.name] || "bg-emerald-400";
 
   return (
     <Draggable draggableId={column.id} index={index}>
@@ -83,7 +83,7 @@ export default function Column({ column, cards, index, project, onCardClick, onR
               </span>
             </div>
 
-            {!column.isDefault && (
+            {!column.isDefault && userRole === "LEADER" && (
               <div className="relative">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
@@ -123,7 +123,7 @@ export default function Column({ column, cards, index, project, onCardClick, onR
                 ref={provided.innerRef}
                 {...provided.droppableProps}
                 className={`flex-1 space-y-2 overflow-y-auto px-3 pb-3 min-h-[60px] rounded-b-xl transition-colors ${
-                  snapshot.isDraggingOver ? "bg-blue-50/50" : ""
+                  snapshot.isDraggingOver ? "bg-green-50/50" : ""
                 }`}
               >
                 {cards.map((card, cardIndex) => (
