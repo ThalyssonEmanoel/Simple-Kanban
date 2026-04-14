@@ -94,6 +94,10 @@ export async function PUT(request, { params }) {
       updateData.dueDate = data.dueDate ? new Date(data.dueDate) : null;
       logDetails.push("prazo atualizado");
     }
+    if (data.reminderDate !== undefined) {
+      updateData.reminderDate = data.reminderDate ? new Date(data.reminderDate) : null;
+      logDetails.push("data de lembrete atualizada");
+    }
     if (data.assigneeId !== undefined) {
       updateData.assigneeId = data.assigneeId || null;
       logDetails.push("responsável alterado");

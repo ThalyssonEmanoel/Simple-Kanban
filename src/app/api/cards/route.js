@@ -5,7 +5,7 @@ import { requireUser, requireProjectAccess } from "@/lib/auth";
 export async function POST(request) {
   try {
     const user = await requireUser();
-    const { title, description, priority, dueDate, columnId, assigneeId, projectId } =
+    const { title, description, priority, dueDate, reminderDate, columnId, assigneeId, projectId } =
       await request.json();
 
     await requireProjectAccess(user.id, projectId);
@@ -25,6 +25,7 @@ export async function POST(request) {
         description: description?.trim() || null,
         priority: priority || "MEDIUM",
         dueDate: dueDate ? new Date(dueDate) : null,
+        reminderDate: reminderDate ? new Date(reminderDate) : null,
         position: (maxPosition._max.position ?? -1) + 1,
         columnId,
         creatorId: user.id,

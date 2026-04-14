@@ -92,7 +92,7 @@ export default function Board({ project, filters, onCardClick, onRefresh, userRo
           <div
             ref={provided.innerRef}
             {...provided.droppableProps}
-            className="flex h-full gap-4 overflow-x-auto p-4"
+            className="flex h-full gap-3 sm:gap-4 overflow-x-auto p-3 sm:p-4"
           >
             {project.columns.map((column, index) => (
               <Column
