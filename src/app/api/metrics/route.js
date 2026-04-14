@@ -25,9 +25,9 @@ export async function GET(request) {
       startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     }
 
-    // Tasks completed in period
+    // Tasks completed in period (supports both old "Done" and new "Finalizadas")
     const doneColumn = await prisma.column.findFirst({
-      where: { projectId, name: "Done" },
+      where: { projectId, name: { in: ["Finalizadas", "Done"] } },
     });
 
     const completedCards = doneColumn
@@ -35,16 +35,36 @@ export async function GET(request) {
           where: {
             columnId: doneColumn.id,
             updatedAt: { gte: startDate },
-          },
-          include: {
-            assignee: { select: { id: true, name: true, image: true } },
-            activityLogs: {
-              where: { action: "CARD_MOVED" },
-              orderBy: { createdAt: "asc" },
-            },
+            archived: false,
           },
         })
       : [];
+
+    // Tasks in "A fazer" / "To Do" column
+    const todoColumn = await prisma.column.findFirst({
+      where: { projectId, name: { in: ["A fazer", "To Do"] } },
+    });
+
+    const todoCount = todoColumn
+      ? await prisma.card.count({
+          where: { columnId: todoColumn.id, archived: false },
+        })
+      : 0;
+
+    // Tasks not finished (all cards NOT in "Finalizadas"/"Done")
+    const doneColumnIds = await prisma.column.findMany({
+      where: { projectId, name: { in: ["Finalizadas", "Done"] } },
+      select: { id: true },
+    });
+    const doneIds = doneColumnIds.map((c) => c.id);
+
+    const notFinishedCount = await prisma.card.count({
+      where: {
+        column: { projectId },
+        archived: false,
+        ...(doneIds.length > 0 ? { columnId: { notIn: doneIds } } : {}),
+      },
+    });
 
     // Tasks per member
     const members = await prisma.projectMember.findMany({
@@ -69,8 +89,7 @@ export async function GET(request) {
 
     const memberStats = members.map((m) => {
       const cards = m.user.assignedCards;
-      const done = cards.filter((c) => c.column.name === "Done").length;
-      const inProgress = cards.filter((c) => c.column.name === "Doing").length;
+      const done = cards.filter((c) => c.column.name === "Finalizadas" || c.column.name === "Done").length;
       const total = cards.length;
 
       return {
@@ -80,21 +99,9 @@ export async function GET(request) {
         role: m.role,
         total,
         done,
-        inProgress,
-        todo: total - done - inProgress,
+        todo: total - done,
       };
     });
-
-    // Lead time calculation (average time from creation to Done)
-    let avgLeadTime = 0;
-    if (completedCards.length > 0) {
-      const leadTimes = completedCards.map((card) => {
-        const createdAt = new Date(card.createdAt);
-        const completedAt = new Date(card.updatedAt);
-        return (completedAt - createdAt) / (1000 * 60 * 60); // hours
-      });
-      avgLeadTime = leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length;
-    }
 
     // Column distribution
     const columns = await prisma.column.findMany({
@@ -110,22 +117,12 @@ export async function GET(request) {
       count: col._count.cards,
     }));
 
-    // Overdue cards
-    const overdueCards = await prisma.card.count({
-      where: {
-        column: { projectId },
-        archived: false,
-        dueDate: { lt: now },
-        column: { name: { not: "Done" } },
-      },
-    });
-
     return NextResponse.json({
       completedCount: completedCards.length,
-      avgLeadTimeHours: Math.round(avgLeadTime * 10) / 10,
+      todoCount,
+      notFinishedCount,
       memberStats,
       columnStats,
-      overdueCards,
       period,
     });
   } catch {

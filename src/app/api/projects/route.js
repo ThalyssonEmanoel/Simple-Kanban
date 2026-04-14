@@ -50,10 +50,8 @@ export async function POST(request) {
         columns: {
           createMany: {
             data: [
-              { name: "To Do", position: 0, isDefault: true },
-              { name: "Doing", position: 1, isDefault: true },
-              { name: "Review", position: 2, isDefault: true },
-              { name: "Done", position: 3, isDefault: true },
+              { name: "A fazer", position: 0, isDefault: true },
+              { name: "Finalizadas", position: 1, isDefault: true },
             ],
           },
         },
