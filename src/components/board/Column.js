@@ -55,7 +55,7 @@ export default function Column({ column, cards, index, project, onCardClick, onR
         <div
           ref={provided.innerRef}
           {...provided.draggableProps}
-          className="flex w-72 flex-shrink-0 flex-col rounded-xl bg-gray-100/80 border border-gray-200"
+          className="flex w-[260px] sm:w-72 shrink-0 flex-col rounded-xl bg-gray-100/80 border border-gray-200"
         >
           {/* Column Header */}
           <div

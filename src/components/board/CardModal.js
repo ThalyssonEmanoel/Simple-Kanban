@@ -17,6 +17,7 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("MEDIUM");
   const [dueDate, setDueDate] = useState("");
+  const [reminderDate, setReminderDate] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [comment, setComment] = useState("");
   const [tab, setTab] = useState("details");
@@ -30,6 +31,7 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
       setDescription(data.description || "");
       setPriority(data.priority);
       setDueDate(data.dueDate ? data.dueDate.split("T")[0] : "");
+      setReminderDate(data.reminderDate ? data.reminderDate.split("T")[0] : "");
       setAssigneeId(data.assigneeId || "");
     }
     setLoading(false);
@@ -48,6 +50,7 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
         description,
         priority,
         dueDate: dueDate || null,
+        reminderDate: reminderDate || null,
         assigneeId: assigneeId || null,
       }),
     });
@@ -94,34 +97,31 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
   const overdue = isOverdue(card.dueDate);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-10" onClick={onClose}>
-      <div
-        className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-2 pt-4 sm:p-4 sm:pt-10">
+      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
         {/* Header */}
-        <div className="flex items-start justify-between border-b px-6 py-4">
-          <div className="flex-1">
+        <div className="flex items-start justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex-1 min-w-0">
             {editing ? (
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full text-xl font-bold text-gray-900 border-b-2 border-primary focus:outline-none"
+                className="w-full text-lg sm:text-xl font-bold text-gray-900 border-b-2 border-primary focus:outline-none"
               />
             ) : (
-              <h2 className="text-xl font-bold text-gray-900">{card.title}</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 break-words">{card.title}</h2>
             )}
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-xs sm:text-sm text-gray-500">
               em <strong>{card.column.name || "—"}</strong> | criado por{" "}
               <strong>{card.creator.name}</strong>
             </p>
           </div>
-          <div className="flex items-center gap-2 ml-4">
+          <div className="flex items-center gap-1 sm:gap-2 ml-2 sm:ml-4 shrink-0">
             {!editing ? (
               <button
                 onClick={() => setEditing(true)}
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                className="rounded-lg border border-gray-300 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-gray-600 hover:bg-gray-50"
               >
                 Editar
               </button>
@@ -129,13 +129,13 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
               <>
                 <button
                   onClick={handleSave}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-sm text-white hover:bg-primary-hover"
+                  className="rounded-lg bg-primary px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-white hover:bg-primary-hover"
                 >
                   Salvar
                 </button>
                 <button
                   onClick={() => setEditing(false)}
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                  className="rounded-lg border border-gray-300 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-gray-600 hover:bg-gray-50"
                 >
                   Cancelar
                 </button>
@@ -153,16 +153,16 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
         </div>
 
         {/* Body */}
-        <div className="flex">
+        <div className="flex flex-col md:flex-row">
           {/* Main content */}
-          <div className="flex-1 border-r p-6">
+          <div className="flex-1 md:border-r p-4 sm:p-6">
             {/* Tabs */}
             <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
               {["details", "comments", "history"].map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
-                  className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  className={`flex-1 rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${
                     tab === t
                       ? "bg-white text-gray-900 shadow-sm"
                       : "text-gray-500 hover:text-gray-700"
@@ -254,11 +254,11 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
               <div className="space-y-3">
                 {card.activityLogs.map((log) => (
                   <div key={log.id} className="flex gap-3">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-xs">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs">
                       {getInitials(log.user.name)}
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-700">
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-700 break-words">
                         <strong>{log.user.name}</strong> — {log.details}
                       </p>
                       <p className="text-xs text-gray-400">
@@ -277,7 +277,7 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
           </div>
 
           {/* Sidebar */}
-          <div className="w-64 p-4 space-y-4">
+          <div className="w-full md:w-64 p-4 space-y-4 border-t md:border-t-0">
             {/* Priority */}
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -330,6 +330,33 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
                 </span>
               )}
             </div>
+
+            {/* Reminder date */}
+            {(dueDate || card.dueDate) && (
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Lembrete
+                </label>
+                {editing ? (
+                  <input
+                    type="date"
+                    value={reminderDate}
+                    onChange={(e) => setReminderDate(e.target.value)}
+                    max={dueDate || (card.dueDate ? card.dueDate.split("T")[0] : undefined)}
+                    className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  />
+                ) : (
+                  <span className="text-sm text-gray-700">
+                    {card.reminderDate
+                      ? new Date(card.reminderDate).toLocaleDateString("pt-BR")
+                      : "Sem lembrete"}
+                  </span>
+                )}
+                <p className="mt-1 text-xs text-gray-400">
+                  Data para receber notificação de lembrete
+                </p>
+              </div>
+            )}
 
             {/* Assignee */}
             <div>

@@ -75,18 +75,18 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="border-b bg-white shadow-sm">
-        <div className="mx-auto flex max-w-4xl items-center gap-4 px-6 py-4">
+        <div className="mx-auto flex max-w-4xl items-center gap-3 sm:gap-4 px-4 py-3 sm:px-6 sm:py-4">
           <button
             onClick={() => router.push(`/project/${projectId}`)}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
           >
             Voltar
           </button>
-          <h1 className="text-xl font-bold text-gray-900">Configurações do Projeto</h1>
+          <h1 className="text-base sm:text-xl font-bold text-gray-900">Configurações</h1>
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-6 py-8 space-y-8">
+      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Project Info */}
         <section className="rounded-xl bg-white p-6 shadow-sm border border-gray-200">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Informações</h2>
@@ -133,22 +133,22 @@ export default function SettingsPage() {
             {project.members.map((m) => (
               <div
                 key={m.id}
-                className="flex items-center justify-between rounded-lg bg-gray-50 p-3"
+                className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg bg-gray-50 p-3 gap-2"
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-medium text-primary">
                     {m.user.image ? (
                       <img src={m.user.image} alt="" className="h-full w-full rounded-full object-cover" />
                     ) : (
                       getInitials(m.user.name)
                     )}
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{m.user.name}</p>
-                    <p className="text-xs text-gray-500">{m.user.email}</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{m.user.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{m.user.email}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 ml-13 sm:ml-0 shrink-0">
                   <select
                     value={m.role}
                     onChange={(e) => handleRoleChange(m.id, e.target.value)}

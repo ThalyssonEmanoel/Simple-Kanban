@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getInitials } from "@/lib/utils";
+import * as XLSX from "xlsx";
 
 export default function MetricsPage() {
   const { projectId } = useParams();
@@ -25,6 +26,70 @@ export default function MetricsPage() {
     loadMetrics();
   }, [loadMetrics]);
 
+  async function handleExportXLSX() {
+    const res = await fetch(`/api/projects/${projectId}`);
+    if (!res.ok) return;
+    const project = await res.json();
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Cards
+    const cardsData = [];
+    for (const column of project.columns) {
+      for (const card of column.cards) {
+        cardsData.push({
+          Coluna: column.name,
+          Título: card.title,
+          Prioridade: card.priority,
+          Responsável: card.assignee?.name || "Não atribuído",
+          Criador: card.creator?.name || "",
+          Prazo: card.dueDate
+            ? new Date(card.dueDate).toLocaleDateString("pt-BR")
+            : "Sem prazo",
+          "Criado em": new Date(card.createdAt).toLocaleDateString("pt-BR"),
+        });
+      }
+    }
+    const wsCards = XLSX.utils.json_to_sheet(
+      cardsData.length > 0
+        ? cardsData
+        : [{ Coluna: "", Título: "Nenhum cartão encontrado" }]
+    );
+    XLSX.utils.book_append_sheet(wb, wsCards, "Cartões");
+
+    // Sheet 2: Members
+    const membersData = metrics.memberStats.map((m) => ({
+      Nome: m.name,
+      Função: m.role === "LEADER" ? "Líder" : "Membro",
+      Concluídas: m.done,
+      Pendentes: m.todo,
+      Total: m.total,
+    }));
+    const wsMembers = XLSX.utils.json_to_sheet(membersData);
+    XLSX.utils.book_append_sheet(wb, wsMembers, "Membros");
+
+    // Sheet 3: Column Distribution
+    const columnData = metrics.columnStats.map((c) => ({
+      Coluna: c.name,
+      "Qtd. Cartões": c.count,
+    }));
+    const wsCols = XLSX.utils.json_to_sheet(columnData);
+    XLSX.utils.book_append_sheet(wb, wsCols, "Distribuição");
+
+    // Sheet 4: Summary
+    const summaryData = [
+      { Métrica: "Tarefas Concluídas", Valor: metrics.completedCount },
+      { Métrica: "Tarefas A fazer", Valor: metrics.todoCount },
+      { Métrica: "Tarefas Não Finalizadas", Valor: metrics.notFinishedCount },
+      { Métrica: "Total de Membros", Valor: metrics.memberStats.length },
+      { Métrica: "Período", Valor: period === "week" ? "Semana" : period === "month" ? "Mês" : "Trimestre" },
+    ];
+    const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo");
+
+    XLSX.writeFile(wb, `projeto-metricas-${period}.xlsx`);
+  }
+
   if (loading || !metrics) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -38,39 +103,50 @@ export default function MetricsPage() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-white shadow-sm">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-4">
+        <div className="mx-auto flex max-w-6xl flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <button
               onClick={() => router.push(`/project/${projectId}`)}
               className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
             >
               Voltar
             </button>
-            <h1 className="text-xl font-bold text-gray-900">Métricas de Desempenho</h1>
+            <h1 className="text-base sm:text-xl font-bold text-gray-900">Métricas</h1>
           </div>
-          <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
-            {[
-              { key: "week", label: "Semana" },
-              { key: "month", label: "Mês" },
-              { key: "quarter", label: "Trimestre" },
-            ].map((p) => (
-              <button
-                key={p.key}
-                onClick={() => setPeriod(p.key)}
-                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  period === p.key
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={handleExportXLSX}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="hidden sm:inline">Exportar</span> XLSX
+            </button>
+            <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+              {[
+                { key: "week", label: "Semana" },
+                { key: "month", label: "Mês" },
+                { key: "quarter", label: "Tri" },
+              ].map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => setPeriod(p.key)}
+                  className={`rounded-md px-2 sm:px-3 py-1.5 text-xs sm:text-sm font-medium transition-colors ${
+                    period === p.key
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         {/* Summary Cards */}
         <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl bg-white p-5 shadow-sm border border-gray-200">
@@ -134,10 +210,10 @@ export default function MetricsPage() {
               {metrics.memberStats.map((m) => (
                 <div
                   key={m.id}
-                  className="flex items-center justify-between rounded-lg bg-gray-50 p-3"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg bg-gray-50 p-3 gap-2"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                       {m.image ? (
                         <img src={m.image} alt="" className="h-full w-full rounded-full object-cover" />
                       ) : (
@@ -151,7 +227,7 @@ export default function MetricsPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm">
+                  <div className="flex items-center gap-4 text-sm ml-12 sm:ml-0">
                     <div className="text-center">
                       <p className="font-bold text-green-600">{m.done}</p>
                       <p className="text-xs text-gray-400">Concluídas</p>

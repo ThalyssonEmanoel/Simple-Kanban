@@ -2,9 +2,9 @@
 
 export default function FilterBar({ filters, setFilters, members }) {
   return (
-    <div className="flex items-center gap-3 border-b bg-white px-4 py-2">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 border-b bg-white px-3 py-2 sm:px-4">
       {/* Search */}
-      <div className="relative flex-1 max-w-md">
+      <div className="relative flex-1 sm:max-w-md">
         <svg
           className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
           fill="none"
@@ -22,42 +22,44 @@ export default function FilterBar({ filters, setFilters, members }) {
         />
       </div>
 
-      {/* Assignee filter */}
-      <select
-        value={filters.assignee}
-        onChange={(e) => setFilters({ ...filters, assignee: e.target.value })}
-        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 focus:border-primary focus:outline-none"
-      >
-        <option value="">Todos os responsáveis</option>
-        {members.map((m) => (
-          <option key={m.user.id} value={m.user.id}>
-            {m.user.name}
-          </option>
-        ))}
-      </select>
-
-      {/* Priority filter */}
-      <select
-        value={filters.priority}
-        onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-        className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 focus:border-primary focus:outline-none"
-      >
-        <option value="">Todas as prioridades</option>
-        <option value="LOW">Baixa</option>
-        <option value="MEDIUM">Média</option>
-        <option value="HIGH">Alta</option>
-        <option value="CRITICAL">Crítica</option>
-      </select>
-
-      {/* Clear filters */}
-      {(filters.search || filters.assignee || filters.priority) && (
-        <button
-          onClick={() => setFilters({ search: "", assignee: "", priority: "" })}
-          className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100"
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Assignee filter */}
+        <select
+          value={filters.assignee}
+          onChange={(e) => setFilters({ ...filters, assignee: e.target.value })}
+          className="flex-1 sm:flex-none rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 focus:border-primary focus:outline-none"
         >
-          Limpar filtros
-        </button>
-      )}
+          <option value="">Todos</option>
+          {members.map((m) => (
+            <option key={m.user.id} value={m.user.id}>
+              {m.user.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Priority filter */}
+        <select
+          value={filters.priority}
+          onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
+          className="flex-1 sm:flex-none rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 focus:border-primary focus:outline-none"
+        >
+          <option value="">Prioridades</option>
+          <option value="LOW">Baixa</option>
+          <option value="MEDIUM">Média</option>
+          <option value="HIGH">Alta</option>
+          <option value="CRITICAL">Crítica</option>
+        </select>
+
+        {/* Clear filters */}
+        {(filters.search || filters.assignee || filters.priority) && (
+          <button
+            onClick={() => setFilters({ search: "", assignee: "", priority: "" })}
+            className="shrink-0 rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100"
+          >
+            Limpar
+          </button>
+        )}
+      </div>
     </div>
   );
 }
