@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import NotificationCenter from "./NotificationCenter";
+import InstallPWA from "@/components/pwa/InstallPWA";
 
 export default function Navbar({ project, onRefresh }) {
   const [showSettings, setShowSettings] = useState(false);
@@ -85,6 +86,8 @@ export default function Navbar({ project, onRefresh }) {
               </div>
             )}
           </div>
+
+          <InstallPWA variant="navbar" />
 
           <NotificationCenter />
 
@@ -171,6 +174,9 @@ export default function Navbar({ project, onRefresh }) {
               {project.members.length} membro{project.members.length !== 1 ? "s" : ""}
             </span>
           </div>
+
+          {/* Install PWA */}
+          <InstallPWA variant="mobile" />
 
           {/* Action buttons */}
           <div className="flex flex-col gap-2">

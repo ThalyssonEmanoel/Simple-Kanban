@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getInitials } from "@/lib/utils";
+import InstallPWA from "@/components/pwa/InstallPWA";
 
 export default function HomePage() {
   const [projects, setProjects] = useState([]);
@@ -157,6 +158,7 @@ export default function HomePage() {
             <h1 className="text-lg sm:text-xl font-bold text-gray-900">Kanban</h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
+            <InstallPWA variant="navbar" />
             <button
               onClick={() => setShowProfile(true)}
               className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-gray-100 transition-colors"
