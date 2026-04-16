@@ -72,3 +72,32 @@ export async function PUT(request, { params }) {
     return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500 });
   }
 }
+
+export async function DELETE(request, { params }) {
+  try {
+    const user = await requireUser();
+    const { projectId } = await params;
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { ownerId: true },
+    });
+
+    if (!project) {
+      return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
+    }
+
+    if (project.ownerId !== user.id) {
+      return NextResponse.json(
+        { error: "Apenas o proprietário pode excluir o projeto" },
+        { status: 403 }
+      );
+    }
+
+    await prisma.project.delete({ where: { id: projectId } });
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ error: "Erro ao excluir" }, { status: 500 });
+  }
+}

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import NotificationCenter from "./NotificationCenter";
+import InstallPWA from "../pwa/InstallPWA";
 
 export default function Navbar({ project, onRefresh }) {
   const [showSettings, setShowSettings] = useState(false);
@@ -43,7 +44,7 @@ export default function Navbar({ project, onRefresh }) {
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <button
             onClick={() => router.push("/")}
-            className="flex h-8 w-8 sm:h-9 sm:w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-white font-bold text-sm hover:bg-primary-hover transition-colors"
+            className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-white font-bold text-sm hover:bg-primary-hover transition-colors"
           >
             K
           </button>
@@ -55,7 +56,7 @@ export default function Navbar({ project, onRefresh }) {
           </div>
           <button
             onClick={() => setShowCode(!showCode)}
-            className="rounded-md bg-gray-100 px-2 py-1 text-xs font-mono text-gray-500 hover:bg-gray-200 transition-colors hidden sm:block flex-shrink-0"
+            className="rounded-md bg-gray-100 px-2 py-1 text-xs font-mono text-gray-500 hover:bg-gray-200 transition-colors hidden sm:block shrink-0"
             title="Código de convite"
           >
             {project.code}
@@ -114,6 +115,7 @@ export default function Navbar({ project, onRefresh }) {
 
         {/* Mobile actions */}
         <div className="flex md:hidden items-center gap-2">
+          <InstallPWA variant="navbar" />
           <NotificationCenter />
           <button
             onClick={() => setShowMobileMenu(!showMobileMenu)}
@@ -206,3 +208,4 @@ export default function Navbar({ project, onRefresh }) {
     </header>
   );
 }
+
