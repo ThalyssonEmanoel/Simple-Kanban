@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 export async function updateSession(request) {
   let supabaseResponse = NextResponse.next({ request });
+  const pathname = request.nextUrl.pathname;
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -29,10 +30,17 @@ export async function updateSession(request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Rotas públicas
-  const publicPaths = ["/login", "/register"];
-  const isPublicPath = publicPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
+  // Rotas que precisam ficar acessíveis sem sessão para autenticação funcionar.
+  const publicPaths = [
+    "/login",
+    "/register",
+    "/auth/callback",
+    "/forgot-password",
+    "/reset-password",
+  ];
+
+  const isPublicPath = publicPaths.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
 
   if (!user && !isPublicPath) {
