@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import Board from "@/components/board/Board";
@@ -11,11 +11,13 @@ import CardModal from "@/components/board/CardModal";
 export default function ProjectPage() {
   const { projectId } = useParams();
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedCard, setSelectedCard] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [onlineUserIds, setOnlineUserIds] = useState([]);
   const [filters, setFilters] = useState({
     search: "",
     assignee: "",
@@ -23,7 +25,7 @@ export default function ProjectPage() {
   });
 
   const loadProject = useCallback(async () => {
-    const res = await fetch(`/api/projects/${projectId}`);
+    const res = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
       setProject(data);
@@ -32,6 +34,7 @@ export default function ProjectPage() {
       if (user && data.members) {
         const member = data.members.find((m) => m.user.email === user.email);
         setUserRole(member?.role || null);
+        setCurrentUserId(member?.user?.id || null);
       }
     } else if (res.status === 401 || res.status === 403) {
       router.push("/");
@@ -42,6 +45,36 @@ export default function ProjectPage() {
   useEffect(() => {
     loadProject();
   }, [loadProject]);
+
+  // Supabase Realtime Presence: tracks who is currently viewing this project
+  useEffect(() => {
+    if (!currentUserId || !projectId) return;
+
+    const channel = supabase.channel(`project-presence:${projectId}`, {
+      config: { presence: { key: currentUserId } },
+    });
+
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        setOnlineUserIds(Object.keys(state));
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ online_at: new Date().toISOString() });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId, projectId, supabase]);
+
+  const onlineMembers = useMemo(() => {
+    if (!project) return [];
+    const set = new Set(onlineUserIds);
+    return project.members.filter((m) => set.has(m.user.id));
+  }, [project, onlineUserIds]);
 
   if (loading) {
     return (
@@ -61,7 +94,7 @@ export default function ProjectPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <Navbar project={project} onRefresh={loadProject} />
+      <Navbar project={project} onRefresh={loadProject} onlineMembers={onlineMembers} />
       <FilterBar
         filters={filters}
         setFilters={setFilters}
@@ -82,6 +115,8 @@ export default function ProjectPage() {
           project={project}
           onClose={() => setSelectedCard(null)}
           onRefresh={loadProject}
+          currentUserId={currentUserId}
+          userRole={userRole}
         />
       )}
     </div>

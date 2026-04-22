@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser, requireProjectAccess } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request, { params }) {
   try {
     const user = await requireUser();
@@ -26,6 +28,11 @@ export async function GET(request, { params }) {
               include: {
                 creator: { select: { id: true, name: true, image: true } },
                 assignee: { select: { id: true, name: true, image: true } },
+                assignees: {
+                  include: {
+                    user: { select: { id: true, name: true, image: true } },
+                  },
+                },
                 _count: { select: { comments: true, attachments: true } },
               },
             },

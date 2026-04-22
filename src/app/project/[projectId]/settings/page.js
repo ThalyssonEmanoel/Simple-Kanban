@@ -20,8 +20,8 @@ export default function SettingsPage() {
 
   const loadProject = useCallback(async () => {
     const [projectRes, profileRes] = await Promise.all([
-      fetch(`/api/projects/${projectId}`),
-      fetch("/api/user/profile"),
+      fetch(`/api/projects/${projectId}`, { cache: "no-store" }),
+      fetch("/api/user/profile", { cache: "no-store" }),
     ]);
     if (projectRes.ok) {
       const data = await projectRes.json();
@@ -68,12 +68,25 @@ export default function SettingsPage() {
   }
 
   async function handleRoleChange(memberId, role) {
-    await fetch(`/api/projects/${projectId}/members`, {
+    // Optimistic update so the UI reflects the change immediately, before the server round-trip.
+    setProject((prev) =>
+      prev
+        ? { ...prev, members: prev.members.map((m) => (m.id === memberId ? { ...m, role } : m)) }
+        : prev
+    );
+
+    const res = await fetch(`/api/projects/${projectId}/members`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
+      cache: "no-store",
       body: JSON.stringify({ memberId, role }),
     });
-    loadProject();
+    if (!res.ok) {
+      // Revert on failure by refetching authoritative state
+      await loadProject();
+      return;
+    }
+    await loadProject();
   }
 
   async function handleRemoveMember(memberId, memberName) {
@@ -82,9 +95,10 @@ export default function SettingsPage() {
     await fetch(`/api/projects/${projectId}/members`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
+      cache: "no-store",
       body: JSON.stringify({ memberId }),
     });
-    loadProject();
+    await loadProject();
   }
 
   if (loading) {
