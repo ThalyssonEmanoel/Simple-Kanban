@@ -7,12 +7,19 @@ export function generateProjectCode() {
   return code;
 }
 
+// Extract YYYY-MM-DD from a Date/ISO string without applying the local timezone,
+// so dates chosen in <input type="date"> (wall-clock days) don't shift -1 on display.
+export function toDateOnlyString(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value.slice(0, 10);
+  return value.toISOString().slice(0, 10);
+}
+
 export function formatDate(date) {
-  return new Date(date).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+  if (!date) return "";
+  const [y, m, d] = toDateOnlyString(date).split("-");
+  if (!y || !m || !d) return "";
+  return `${d}/${m}/${y}`;
 }
 
 export function formatDateTime(date) {
@@ -47,7 +54,10 @@ export function getPriorityLabel(priority) {
 
 export function isOverdue(dueDate) {
   if (!dueDate) return false;
-  return new Date(dueDate) < new Date();
+  const due = toDateOnlyString(dueDate);
+  const today = new Date();
+  const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return due < localToday;
 }
 
 export function getInitials(name) {

@@ -6,6 +6,15 @@ import { getPriorityColor, getPriorityLabel, isOverdue, formatDate, getInitials 
 export default function Card({ card, index, onClick }) {
   const overdue = isOverdue(card.dueDate) && card.column?.name !== "Finalizadas" && card.column?.name !== "Done";
 
+  const assignees =
+    Array.isArray(card.assignees) && card.assignees.length > 0
+      ? card.assignees.map((a) => a.user)
+      : card.assignee
+        ? [card.assignee]
+        : [];
+  const visibleAssignees = assignees.slice(0, 3);
+  const extraAssignees = Math.max(0, assignees.length - visibleAssignees.length);
+
   return (
     <Draggable draggableId={card.id} index={index}>
       {(provided, snapshot) => (
@@ -57,20 +66,33 @@ export default function Card({ card, index, onClick }) {
               <span></span>
             )}
 
-            {/* Assignee avatar */}
-            {card.assignee ? (
-              <div
-                className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary"
-                title={card.assignee.name}
-              >
-                {card.assignee.image ? (
-                  <img
-                    src={card.assignee.image}
-                    alt={card.assignee.name}
-                    className="h-full w-full rounded-full object-cover"
-                  />
-                ) : (
-                  getInitials(card.assignee.name)
+            {/* Assignees */}
+            {assignees.length > 0 ? (
+              <div className="flex -space-x-1.5">
+                {visibleAssignees.map((u) => (
+                  <div
+                    key={u.id}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-primary/10 text-xs font-medium text-primary"
+                    title={u.name}
+                  >
+                    {u.image ? (
+                      <img
+                        src={u.image}
+                        alt={u.name}
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    ) : (
+                      getInitials(u.name)
+                    )}
+                  </div>
+                ))}
+                {extraAssignees > 0 && (
+                  <div
+                    className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gray-200 text-xs font-medium text-gray-600"
+                    title={`+${extraAssignees} responsáveis`}
+                  >
+                    +{extraAssignees}
+                  </div>
                 )}
               </div>
             ) : card.creator ? (

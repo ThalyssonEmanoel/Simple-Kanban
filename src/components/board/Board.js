@@ -78,8 +78,14 @@ export default function Board({ project, filters, onCardClick, onRefresh, userRo
         !card.title.toLowerCase().includes(filters.search.toLowerCase())
       )
         return false;
-      if (filters.assignee && card.assigneeId !== filters.assignee)
-        return false;
+      if (filters.assignee) {
+        const assigneeIds = Array.isArray(card.assignees) && card.assignees.length > 0
+          ? card.assignees.map((a) => a.user?.id || a.userId)
+          : card.assigneeId
+            ? [card.assigneeId]
+            : [];
+        if (!assigneeIds.includes(filters.assignee)) return false;
+      }
       if (filters.priority && card.priority !== filters.priority) return false;
       return true;
     });

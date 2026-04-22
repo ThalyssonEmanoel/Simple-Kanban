@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser, requireLeader } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function PUT(request, { params }) {
   try {
     const user = await requireUser();
@@ -14,8 +16,17 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Role inválido" }, { status: 400 });
     }
 
+    const existing = await prisma.projectMember.findUnique({
+      where: { id: memberId },
+      select: { id: true, projectId: true },
+    });
+
+    if (!existing || existing.projectId !== projectId) {
+      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404 });
+    }
+
     const member = await prisma.projectMember.update({
-      where: { id: memberId, projectId },
+      where: { id: memberId },
       data: { role },
     });
 
@@ -33,9 +44,16 @@ export async function DELETE(request, { params }) {
 
     const { memberId } = await request.json();
 
-    await prisma.projectMember.delete({
-      where: { id: memberId, projectId },
+    const existing = await prisma.projectMember.findUnique({
+      where: { id: memberId },
+      select: { id: true, projectId: true },
     });
+
+    if (!existing || existing.projectId !== projectId) {
+      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404 });
+    }
+
+    await prisma.projectMember.delete({ where: { id: memberId } });
 
     return NextResponse.json({ message: "Membro removido" });
   } catch {

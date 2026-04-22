@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser, getUserRole } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request, { params }) {
   try {
-    const user = await requireUser();
+    await requireUser();
     const { cardId } = await params;
 
     const card = await prisma.card.findUnique({
@@ -13,6 +15,11 @@ export async function GET(request, { params }) {
         column: { include: { project: { select: { id: true } } } },
         creator: { select: { id: true, name: true, image: true, email: true } },
         assignee: { select: { id: true, name: true, image: true, email: true } },
+        assignees: {
+          include: {
+            user: { select: { id: true, name: true, image: true, email: true } },
+          },
+        },
         comments: {
           orderBy: { createdAt: "asc" },
           include: {
@@ -53,7 +60,10 @@ export async function PUT(request, { params }) {
 
     const card = await prisma.card.findUnique({
       where: { id: cardId },
-      include: { column: { include: { project: true } } },
+      include: {
+        column: { include: { project: true } },
+        assignees: true,
+      },
     });
 
     if (!card) {
@@ -67,8 +77,11 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
     }
 
-    // Members can only edit their own cards
-    if (role === "MEMBER" && card.assigneeId !== user.id && card.creatorId !== user.id) {
+    const isAssigned =
+      card.assigneeId === user.id ||
+      card.assignees.some((a) => a.userId === user.id);
+
+    if (role === "MEMBER" && !isAssigned && card.creatorId !== user.id) {
       return NextResponse.json(
         { error: "Você só pode editar cartões atribuídos a você" },
         { status: 403 }
@@ -98,24 +111,72 @@ export async function PUT(request, { params }) {
       updateData.reminderDate = data.reminderDate ? new Date(data.reminderDate) : null;
       logDetails.push("data de lembrete atualizada");
     }
-    if (data.assigneeId !== undefined) {
-      updateData.assigneeId = data.assigneeId || null;
-      logDetails.push("responsável alterado");
-
-      if (data.assigneeId && data.assigneeId !== user.id) {
-        await prisma.notification.create({
-          data: {
-            type: "ASSIGNED",
-            message: `${user.name} atribuiu a tarefa "${card.title}" a você`,
-            userId: data.assigneeId,
-            cardId: card.id,
-          },
-        });
-      }
-    }
     if (data.archived !== undefined) {
       updateData.archived = data.archived;
       logDetails.push(data.archived ? "cartão arquivado" : "cartão restaurado");
+    }
+
+    // Multi-assignee handling. Only the leader or the card creator may change assignees.
+    // Legacy `assigneeId` input is mapped onto the new array for compatibility.
+    let assigneeUpdate = null;
+    if (data.assigneeIds !== undefined) {
+      assigneeUpdate = Array.isArray(data.assigneeIds)
+        ? [...new Set(data.assigneeIds.filter(Boolean))]
+        : [];
+    } else if (data.assigneeId !== undefined) {
+      assigneeUpdate = data.assigneeId ? [data.assigneeId] : [];
+    }
+
+    if (assigneeUpdate !== null) {
+      const canChangeAssignees = role === "LEADER" || card.creatorId === user.id;
+      if (!canChangeAssignees) {
+        return NextResponse.json(
+          { error: "Apenas líderes ou o criador do cartão podem alterar os responsáveis" },
+          { status: 403 }
+        );
+      }
+
+      const previousIds = new Set(card.assignees.map((a) => a.userId));
+      const nextIds = new Set(assigneeUpdate);
+
+      const toAdd = assigneeUpdate.filter((id) => !previousIds.has(id));
+      const toRemoveIds = card.assignees
+        .filter((a) => !nextIds.has(a.userId))
+        .map((a) => a.userId);
+
+      await prisma.$transaction([
+        ...(toRemoveIds.length > 0
+          ? [
+              prisma.cardAssignee.deleteMany({
+                where: { cardId: card.id, userId: { in: toRemoveIds } },
+              }),
+            ]
+          : []),
+        ...(toAdd.length > 0
+          ? [
+              prisma.cardAssignee.createMany({
+                data: toAdd.map((uid) => ({ cardId: card.id, userId: uid })),
+                skipDuplicates: true,
+              }),
+            ]
+          : []),
+      ]);
+
+      updateData.assigneeId = assigneeUpdate[0] || null;
+      logDetails.push("responsáveis atualizados");
+
+      // Notify newly added assignees
+      const newAssignees = toAdd.filter((uid) => uid !== user.id);
+      if (newAssignees.length > 0) {
+        await prisma.notification.createMany({
+          data: newAssignees.map((uid) => ({
+            type: "ASSIGNED",
+            message: `${user.name} atribuiu a tarefa "${card.title}" a você`,
+            userId: uid,
+            cardId: card.id,
+          })),
+        });
+      }
     }
 
     const updated = await prisma.card.update({
@@ -124,6 +185,9 @@ export async function PUT(request, { params }) {
       include: {
         creator: { select: { id: true, name: true, image: true } },
         assignee: { select: { id: true, name: true, image: true } },
+        assignees: {
+          include: { user: { select: { id: true, name: true, image: true } } },
+        },
         _count: { select: { comments: true, attachments: true } },
       },
     });

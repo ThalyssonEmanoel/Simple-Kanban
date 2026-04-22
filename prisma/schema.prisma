@@ -19,6 +19,7 @@ model User {
   memberships    ProjectMember[]
   createdCards   Card[]          @relation("CardCreator")
   assignedCards  Card[]          @relation("CardAssignee")
+  cardAssignees  CardAssignee[]  @relation("CardAssigneeUser")
   comments       Comment[]
   attachments    Attachment[]
   activityLogs   ActivityLog[]
@@ -86,6 +87,19 @@ model Card {
   attachments   Attachment[]
   activityLogs  ActivityLog[]
   notifications Notification[]
+  assignees     CardAssignee[]
+}
+
+model CardAssignee {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  cardId String
+  card   Card   @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation("CardAssigneeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, userId])
 }
 
 model Comment {

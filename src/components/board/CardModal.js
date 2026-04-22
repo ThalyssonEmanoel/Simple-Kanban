@@ -2,14 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
+  formatDate,
   formatDateTime,
   getPriorityColor,
   getPriorityLabel,
   isOverdue,
   getInitials,
+  toDateOnlyString,
 } from "@/lib/utils";
 
-export default function CardModal({ cardId, project, onClose, onRefresh }) {
+export default function CardModal({ cardId, project, onClose, onRefresh, currentUserId, userRole }) {
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -18,21 +20,26 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
   const [priority, setPriority] = useState("MEDIUM");
   const [dueDate, setDueDate] = useState("");
   const [reminderDate, setReminderDate] = useState("");
-  const [assigneeId, setAssigneeId] = useState("");
+  const [assigneeIds, setAssigneeIds] = useState([]);
   const [comment, setComment] = useState("");
   const [tab, setTab] = useState("details");
 
   const loadCard = useCallback(async () => {
-    const res = await fetch(`/api/cards/${cardId}`);
+    const res = await fetch(`/api/cards/${cardId}`, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
       setCard(data);
       setTitle(data.title);
       setDescription(data.description || "");
       setPriority(data.priority);
-      setDueDate(data.dueDate ? data.dueDate.split("T")[0] : "");
-      setReminderDate(data.reminderDate ? data.reminderDate.split("T")[0] : "");
-      setAssigneeId(data.assigneeId || "");
+      setDueDate(toDateOnlyString(data.dueDate));
+      setReminderDate(toDateOnlyString(data.reminderDate));
+      const ids = Array.isArray(data.assignees) && data.assignees.length > 0
+        ? data.assignees.map((a) => a.user.id)
+        : data.assigneeId
+          ? [data.assigneeId]
+          : [];
+      setAssigneeIds(ids);
     }
     setLoading(false);
   }, [cardId]);
@@ -41,23 +48,36 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
     loadCard();
   }, [loadCard]);
 
+  const canManageAssignees =
+    userRole === "LEADER" || (card && currentUserId && card.creatorId === currentUserId);
+
   async function handleSave() {
+    const body = {
+      title,
+      description,
+      priority,
+      dueDate: dueDate || null,
+      reminderDate: reminderDate || null,
+    };
+    if (canManageAssignees) {
+      body.assigneeIds = assigneeIds;
+    }
+
     await fetch(`/api/cards/${cardId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        description,
-        priority,
-        dueDate: dueDate || null,
-        reminderDate: reminderDate || null,
-        assigneeId: assigneeId || null,
-      }),
+      body: JSON.stringify(body),
     });
 
     setEditing(false);
     loadCard();
     onRefresh();
+  }
+
+  function toggleAssignee(userId) {
+    setAssigneeIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
   }
 
   async function handleArchive() {
@@ -323,9 +343,7 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
                     overdue ? "font-medium text-red-500" : "text-gray-700"
                   }`}
                 >
-                  {card.dueDate
-                    ? new Date(card.dueDate).toLocaleDateString("pt-BR")
-                    : "Sem prazo"}
+                  {card.dueDate ? formatDate(card.dueDate) : "Sem prazo"}
                   {overdue && " (atrasado)"}
                 </span>
               )}
@@ -342,14 +360,12 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
                     type="date"
                     value={reminderDate}
                     onChange={(e) => setReminderDate(e.target.value)}
-                    max={dueDate || (card.dueDate ? card.dueDate.split("T")[0] : undefined)}
+                    max={dueDate || toDateOnlyString(card.dueDate) || undefined}
                     className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
                   />
                 ) : (
                   <span className="text-sm text-gray-700">
-                    {card.reminderDate
-                      ? new Date(card.reminderDate).toLocaleDateString("pt-BR")
-                      : "Sem lembrete"}
+                    {card.reminderDate ? formatDate(card.reminderDate) : "Sem lembrete"}
                   </span>
                 )}
                 <p className="mt-1 text-xs text-gray-400">
@@ -358,37 +374,49 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
               </div>
             )}
 
-            {/* Assignee */}
+            {/* Assignees (multi) */}
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">
-                Responsável
+                Responsáveis
               </label>
-              {editing ? (
-                <select
-                  value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
-                >
-                  <option value="">Sem responsável</option>
-                  {project.members.map((m) => (
-                    <option key={m.user.id} value={m.user.id}>
-                      {m.user.name}
-                    </option>
-                  ))}
-                </select>
-              ) : card.assignee ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                    {card.assignee.image ? (
-                      <img src={card.assignee.image} alt="" className="h-full w-full rounded-full object-cover" />
-                    ) : (
-                      getInitials(card.assignee.name)
-                    )}
-                  </div>
-                  <span className="text-sm text-gray-700">{card.assignee.name}</span>
+              {editing && canManageAssignees ? (
+                <div className="space-y-1 max-h-44 overflow-y-auto rounded-lg border border-gray-200 p-2">
+                  {project.members.length === 0 && (
+                    <p className="text-xs text-gray-400">Nenhum membro disponível</p>
+                  )}
+                  {project.members.map((m) => {
+                    const checked = assigneeIds.includes(m.user.id);
+                    return (
+                      <label
+                        key={m.user.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 hover:bg-gray-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleAssignee(m.user.id)}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/40"
+                        />
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+                          {m.user.image ? (
+                            <img src={m.user.image} alt="" className="h-full w-full rounded-full object-cover" />
+                          ) : (
+                            getInitials(m.user.name)
+                          )}
+                        </div>
+                        <span className="truncate text-sm text-gray-700">{m.user.name}</span>
+                      </label>
+                    );
+                  })}
                 </div>
-              ) : (
-                <span className="text-sm text-gray-400">Não atribuído</span>
+              ) : editing && !canManageAssignees ? (
+                <p className="text-xs text-gray-400">
+                  Apenas líderes ou o criador do cartão podem alterar os responsáveis.
+                </p>
+              ) : null}
+
+              {!editing && (
+                <AssigneeListDisplay card={card} />
               )}
             </div>
 
@@ -432,5 +460,35 @@ export default function CardModal({ cardId, project, onClose, onRefresh }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function AssigneeListDisplay({ card }) {
+  const users =
+    Array.isArray(card.assignees) && card.assignees.length > 0
+      ? card.assignees.map((a) => a.user)
+      : card.assignee
+        ? [card.assignee]
+        : [];
+
+  if (users.length === 0) {
+    return <span className="text-sm text-gray-400">Não atribuído</span>;
+  }
+
+  return (
+    <ul className="space-y-1.5">
+      {users.map((u) => (
+        <li key={u.id} className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
+            {u.image ? (
+              <img src={u.image} alt="" className="h-full w-full rounded-full object-cover" />
+            ) : (
+              getInitials(u.name)
+            )}
+          </div>
+          <span className="truncate text-sm text-gray-700">{u.name}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

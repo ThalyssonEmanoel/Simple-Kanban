@@ -2,11 +2,22 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser, requireProjectAccess } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request) {
   try {
     const user = await requireUser();
-    const { title, description, priority, dueDate, reminderDate, columnId, assigneeId, projectId } =
-      await request.json();
+    const {
+      title,
+      description,
+      priority,
+      dueDate,
+      reminderDate,
+      columnId,
+      assigneeId,
+      assigneeIds,
+      projectId,
+    } = await request.json();
 
     await requireProjectAccess(user.id, projectId);
 
@@ -19,6 +30,15 @@ export async function POST(request) {
       _max: { position: true },
     });
 
+    // Normalize assignee input: prefer assigneeIds (array); fall back to legacy assigneeId
+    const normalizedAssigneeIds = Array.isArray(assigneeIds)
+      ? [...new Set(assigneeIds.filter(Boolean))]
+      : assigneeId
+        ? [assigneeId]
+        : [];
+
+    const primaryAssigneeId = normalizedAssigneeIds[0] || null;
+
     const card = await prisma.card.create({
       data: {
         title: title.trim(),
@@ -29,16 +49,21 @@ export async function POST(request) {
         position: (maxPosition._max.position ?? -1) + 1,
         columnId,
         creatorId: user.id,
-        assigneeId: assigneeId || null,
+        assigneeId: primaryAssigneeId,
+        assignees: {
+          create: normalizedAssigneeIds.map((uid) => ({ userId: uid })),
+        },
       },
       include: {
         creator: { select: { id: true, name: true, image: true } },
         assignee: { select: { id: true, name: true, image: true } },
+        assignees: {
+          include: { user: { select: { id: true, name: true, image: true } } },
+        },
         _count: { select: { comments: true, attachments: true } },
       },
     });
 
-    // Log activity
     await prisma.activityLog.create({
       data: {
         action: "CARD_CREATED",
@@ -48,15 +73,16 @@ export async function POST(request) {
       },
     });
 
-    // Notify assignee
-    if (assigneeId && assigneeId !== user.id) {
-      await prisma.notification.create({
-        data: {
+    // Notify every assignee (except self)
+    const notifyIds = normalizedAssigneeIds.filter((uid) => uid !== user.id);
+    if (notifyIds.length > 0) {
+      await prisma.notification.createMany({
+        data: notifyIds.map((uid) => ({
           type: "ASSIGNED",
           message: `${user.name} atribuiu a tarefa "${card.title}" a você`,
-          userId: assigneeId,
+          userId: uid,
           cardId: card.id,
-        },
+        })),
       });
     }
 
