@@ -88,6 +88,11 @@ model Card {
   activityLogs  ActivityLog[]
   notifications Notification[]
   assignees     CardAssignee[]
+
+  // Hot path: board rendering + move/reorder — fetch cards of a column, not archived, ordered by position.
+  @@index([columnId, archived, position])
+  // Hot path: reminder sweeper — fetch cards with a past reminderDate that are not archived.
+  @@index([reminderDate, archived])
 }
 
 model CardAssignee {
@@ -148,5 +153,8 @@ model Notification {
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
   cardId String?
   card   Card?  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  // Hot path: list a user's notifications newest-first; also used for unread counts.
+  @@index([userId, read, createdAt])
 }
  

@@ -2,27 +2,81 @@
 
 import { useState } from "react";
 
-export default function AddCard({ columnId, projectId, members, onRefresh }) {
+export default function AddCard({ columnId, projectId, project, setProject, onRefresh }) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!title.trim()) return;
+    const trimmed = title.trim();
+    if (!trimmed) return;
 
-    await fetch("/api/cards", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: title.trim(),
+    // Optimistic insert: push a temp card into the target column immediately
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const previousProject = project;
+
+    if (setProject && project) {
+      const optimisticCard = {
+        id: tempId,
+        title: trimmed,
+        description: null,
+        priority: "MEDIUM",
+        dueDate: null,
+        reminderDate: null,
+        archived: false,
         columnId,
-        projectId,
-      }),
-    });
+        assignees: [],
+        _count: { comments: 0, attachments: 0 },
+        _optimistic: true,
+      };
+
+      const newColumns = project.columns.map((col) =>
+        col.id === columnId ? { ...col, cards: [...col.cards, optimisticCard] } : col
+      );
+      setProject({ ...project, columns: newColumns });
+    }
 
     setTitle("");
     setAdding(false);
-    onRefresh();
+
+    try {
+      const res = await fetch("/api/cards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: trimmed,
+          columnId,
+          projectId,
+        }),
+      });
+
+      if (!res.ok) throw new Error("create failed");
+      const created = await res.json();
+
+      // Replace the temp card with the real one returned by the server
+      if (setProject) {
+        setProject((prev) => {
+          if (!prev) return prev;
+          const nextColumns = prev.columns.map((col) =>
+            col.id === columnId
+              ? {
+                  ...col,
+                  cards: col.cards.map((c) => (c.id === tempId ? created : c)),
+                }
+              : col
+          );
+          return { ...prev, columns: nextColumns };
+        });
+      }
+    } catch {
+      // Rollback: remove the temp card and surface an error
+      if (setProject) {
+        setProject(previousProject);
+      } else if (onRefresh) {
+        onRefresh();
+      }
+      alert("Não foi possível criar o cartão. Tente novamente.");
+    }
   }
 
   if (adding) {

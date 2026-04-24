@@ -13,7 +13,12 @@ export default function NotificationCenter() {
 
   useEffect(() => {
     loadNotifications();
-    const interval = setInterval(loadNotifications, 30000);
+    // Poll at 60s and pause while the tab is hidden to cut backend load.
+    const interval = setInterval(() => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        loadNotifications();
+      }
+    }, 60000);
     return () => clearInterval(interval);
   }, []);
 

@@ -2,64 +2,31 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 
+// GET is strictly read-only. Reminder generation lives in
+// /api/notifications/reminders (triggered by a scheduler), not on every poll.
 export async function GET() {
   try {
     const user = await requireUser();
 
-    // Check for reminder notifications that need to be created
-    const now = new Date();
-    const cardsWithReminder = await prisma.card.findMany({
-      where: {
-        reminderDate: { lte: now },
-        archived: false,
-        OR: [
-          { assigneeId: user.id },
-          { creatorId: user.id },
-        ],
-      },
-      include: {
-        column: { select: { name: true } },
-      },
-    });
-
-    for (const card of cardsWithReminder) {
-      if (card.column.name === "Finalizadas" || card.column.name === "Done") continue;
-
-      const existing = await prisma.notification.findFirst({
-        where: {
-          userId: user.id,
-          cardId: card.id,
-          type: "REMINDER",
-        },
-      });
-
-      if (!existing) {
-        const dueDateStr = card.dueDate
-          ? new Date(card.dueDate).toLocaleDateString("pt-BR")
-          : "";
-        await prisma.notification.create({
-          data: {
-            type: "REMINDER",
-            message: `Lembrete: a tarefa "${card.title}" tem prazo até ${dueDateStr}`,
-            userId: user.id,
-            cardId: card.id,
+    const [notifications, unreadCount] = await Promise.all([
+      prisma.notification.findMany({
+        where: { userId: user.id },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: {
+          card: {
+            select: {
+              id: true,
+              title: true,
+              column: { select: { projectId: true } },
+            },
           },
-        });
-      }
-    }
-
-    const notifications = await prisma.notification.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      include: {
-        card: { select: { id: true, title: true, column: { select: { projectId: true } } } },
-      },
-    });
-
-    const unreadCount = await prisma.notification.count({
-      where: { userId: user.id, read: false },
-    });
+        },
+      }),
+      prisma.notification.count({
+        where: { userId: user.id, read: false },
+      }),
+    ]);
 
     return NextResponse.json({ notifications, unreadCount });
   } catch {
