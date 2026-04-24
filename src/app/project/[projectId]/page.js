@@ -103,6 +103,7 @@ export default function ProjectPage() {
       <div className="flex-1 overflow-hidden">
         <Board
           project={project}
+          setProject={setProject}
           filters={filters}
           onCardClick={setSelectedCard}
           onRefresh={loadProject}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser, requireProjectAccess } from "@/lib/auth";
+import { buildColumnStats } from "@/lib/metrics";
 
 export async function GET(request) {
   try {
@@ -13,7 +14,7 @@ export async function GET(request) {
       return NextResponse.json({ error: "projectId é obrigatório" }, { status: 400 });
     }
 
-    await requireProjectAccess(user.id, projectId);
+    const currentUserRole = await requireProjectAccess(user.id, projectId);
 
     const now = new Date();
     let startDate;
@@ -103,19 +104,22 @@ export async function GET(request) {
       };
     });
 
-    // Column distribution
-    const columns = await prisma.column.findMany({
-      where: { projectId },
-      orderBy: { position: "asc" },
-      include: {
-        _count: { select: { cards: true } },
-      },
-    });
+    // Column distribution — archived cards must NOT be counted.
+    // Two-query pattern: fetch columns in order, then groupBy cards where archived = false.
+    const [columns, cardGroups] = await Promise.all([
+      prisma.column.findMany({
+        where: { projectId },
+        orderBy: { position: "asc" },
+        select: { id: true, name: true },
+      }),
+      prisma.card.groupBy({
+        by: ["columnId"],
+        where: { column: { projectId }, archived: false },
+        _count: { _all: true },
+      }),
+    ]);
 
-    const columnStats = columns.map((col) => ({
-      name: col.name,
-      count: col._count.cards,
-    }));
+    const columnStats = buildColumnStats(columns, cardGroups);
 
     return NextResponse.json({
       completedCount: completedCards.length,
@@ -124,6 +128,9 @@ export async function GET(request) {
       memberStats,
       columnStats,
       period,
+      // New field (additive, backward-compatible). Lets the UI gate leader-only
+      // controls. Backend role checks are still enforced independently.
+      currentUserRole,
     });
   } catch {
     return NextResponse.json({ error: "Erro ao buscar métricas" }, { status: 500 });

@@ -5,7 +5,7 @@ import { Draggable, Droppable } from "@hello-pangea/dnd";
 import Card from "./Card";
 import AddCard from "./AddCard";
 
-export default function Column({ column, cards, index, project, onCardClick, onRefresh, userRole }) {
+export default function Column({ column, cards, index, project, setProject, onCardClick, onRefresh, userRole }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(column.name);
   const [showMenu, setShowMenu] = useState(false);
@@ -143,6 +143,8 @@ export default function Column({ column, cards, index, project, onCardClick, onR
             columnId={column.id}
             projectId={project.id}
             members={project.members}
+            project={project}
+            setProject={setProject}
             onRefresh={onRefresh}
           />
         </div>

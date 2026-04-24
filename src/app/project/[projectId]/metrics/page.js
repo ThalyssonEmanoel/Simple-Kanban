@@ -90,6 +90,47 @@ export default function MetricsPage() {
     XLSX.writeFile(wb, `projeto-metricas-${period}.xlsx`);
   }
 
+  async function handleExportArchivedXLSX() {
+    const res = await fetch(`/api/projects/${projectId}/archived-export`);
+    if (res.status === 403) {
+      alert("Apenas líderes podem exportar tarefas arquivadas.");
+      return;
+    }
+    if (!res.ok) {
+      alert("Não foi possível exportar as tarefas arquivadas.");
+      return;
+    }
+
+    const data = await res.json();
+    const wb = XLSX.utils.book_new();
+
+    const rows = (data.cards || []).map((c) => ({
+      Coluna: c.columnName,
+      Título: c.title,
+      Descrição: c.description || "",
+      Prioridade: c.priority,
+      Responsáveis: c.assigneeNames,
+      Criador: c.creatorName,
+      "E-mail Criador": c.creatorEmail,
+      Prazo: c.dueDate ? new Date(c.dueDate).toLocaleDateString("pt-BR") : "Sem prazo",
+      Lembrete: c.reminderDate
+        ? new Date(c.reminderDate).toLocaleDateString("pt-BR")
+        : "",
+      "Criado em": new Date(c.createdAt).toLocaleDateString("pt-BR"),
+      "Atualizado em": new Date(c.updatedAt).toLocaleDateString("pt-BR"),
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(
+      rows.length > 0
+        ? rows
+        : [{ Coluna: "", Título: "Nenhuma tarefa arquivada" }]
+    );
+    XLSX.utils.book_append_sheet(wb, ws, "Arquivadas");
+
+    const safeName = (data.project?.name || "projeto").replace(/[^a-z0-9-_]+/gi, "-");
+    XLSX.writeFile(wb, `${safeName}-arquivadas.xlsx`);
+  }
+
   if (loading || !metrics) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -123,6 +164,19 @@ export default function MetricsPage() {
               </svg>
               <span className="hidden sm:inline">Exportar</span> XLSX
             </button>
+            {metrics.currentUserRole === "LEADER" && (
+              <button
+                onClick={handleExportArchivedXLSX}
+                title="Exportar tarefas arquivadas (somente líderes)"
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v1a2 2 0 01-2 2M5 8v11a2 2 0 002 2h10a2 2 0 002-2V8M10 12h4" />
+                </svg>
+                <span className="hidden sm:inline">Exportar Arquivadas</span>
+                <span className="sm:hidden">Arquivadas</span>
+              </button>
+            )}
             <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
               {[
                 { key: "week", label: "Semana" },
