@@ -4,7 +4,7 @@ import { useState } from "react";
 import { DragDropContext, Droppable } from "@hello-pangea/dnd";
 import Column from "./Column";
 
-export default function Board({ project, filters, onCardClick, onRefresh, userRole }) {
+export default function Board({ project, setProject, filters, onCardClick, onRefresh, userRole }) {
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
 
@@ -18,38 +18,64 @@ export default function Board({ project, filters, onCardClick, onRefresh, userRo
     )
       return;
 
+    // Snapshot previous state for rollback on failure
+    const previousProject = project;
+
     if (type === "COLUMN") {
       const newColumns = Array.from(project.columns);
       const [moved] = newColumns.splice(source.index, 1);
       newColumns.splice(destination.index, 0, moved);
 
-      await fetch("/api/columns/reorder", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          columns: newColumns.map((c) => ({ id: c.id })),
-        }),
-      });
+      // Optimistic update
+      setProject({ ...project, columns: newColumns });
 
-      onRefresh();
+      try {
+        const res = await fetch("/api/columns/reorder", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            columns: newColumns.map((c) => ({ id: c.id })),
+          }),
+        });
+        if (!res.ok) throw new Error("reorder failed");
+      } catch {
+        setProject(previousProject);
+      }
       return;
     }
 
-    // Card drag
-    await fetch("/api/cards/move", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cardId: draggableId,
-        sourceColumnId: source.droppableId,
-        destinationColumnId: destination.droppableId,
-        newPosition: destination.index,
-        projectId: project.id,
-      }),
-    });
+    // Card drag — optimistic update of columns/cards locally
+    const newColumns = project.columns.map((col) => ({ ...col, cards: [...col.cards] }));
+    const sourceCol = newColumns.find((c) => c.id === source.droppableId);
+    const destCol = newColumns.find((c) => c.id === destination.droppableId);
+    if (!sourceCol || !destCol) return;
 
-    onRefresh();
+    const [movedCard] = sourceCol.cards.splice(source.index, 1);
+    if (!movedCard) return;
+
+    const movedCardUpdated = { ...movedCard, columnId: destination.droppableId };
+    destCol.cards.splice(destination.index, 0, movedCardUpdated);
+
+    setProject({ ...project, columns: newColumns });
+
+    try {
+      const res = await fetch("/api/cards/move", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cardId: draggableId,
+          sourceColumnId: source.droppableId,
+          destinationColumnId: destination.droppableId,
+          newPosition: destination.index,
+          projectId: project.id,
+        }),
+      });
+      if (!res.ok) throw new Error("move failed");
+    } catch {
+      // Rollback on server failure
+      setProject(previousProject);
+    }
   }
 
   async function handleAddColumn(e) {
@@ -67,6 +93,7 @@ export default function Board({ project, filters, onCardClick, onRefresh, userRo
 
     setNewColumnName("");
     setAddingColumn(false);
+    // Column create is infrequent; fall back to full reload for the new column id
     onRefresh();
   }
 
@@ -107,6 +134,7 @@ export default function Board({ project, filters, onCardClick, onRefresh, userRo
                 cards={filterCards(column.cards)}
                 index={index}
                 project={project}
+                setProject={setProject}
                 onCardClick={onCardClick}
                 onRefresh={onRefresh}
                 userRole={userRole}
