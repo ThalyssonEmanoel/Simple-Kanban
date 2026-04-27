@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getInitials } from "@/lib/utils";
+import { getInitials, getPriorityLabel, localTodayString } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
 export default function MetricsPage() {
@@ -11,6 +11,11 @@ export default function MetricsPage() {
   const [metrics, setMetrics] = useState(null);
   const [period, setPeriod] = useState("week");
   const [loading, setLoading] = useState(true);
+
+  // Date range filter shared by both export flows. Empty strings mean "no bound".
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+  const [exportRangeError, setExportRangeError] = useState("");
 
   const loadMetrics = useCallback(async () => {
     setLoading(true);
@@ -26,21 +31,51 @@ export default function MetricsPage() {
     loadMetrics();
   }, [loadMetrics]);
 
+  function validateRange() {
+    if (exportStartDate && exportEndDate && exportStartDate > exportEndDate) {
+      setExportRangeError("A data inicial não pode ser posterior à data final.");
+      return false;
+    }
+    setExportRangeError("");
+    return true;
+  }
+
+  function inRange(dateValue) {
+    if (!exportStartDate && !exportEndDate) return true;
+    if (!dateValue) return false;
+    const d = new Date(dateValue);
+    if (Number.isNaN(d.getTime())) return false;
+    if (exportStartDate) {
+      const start = new Date(`${exportStartDate}T00:00:00`);
+      if (d < start) return false;
+    }
+    if (exportEndDate) {
+      const end = new Date(`${exportEndDate}T23:59:59.999`);
+      if (d > end) return false;
+    }
+    return true;
+  }
+
   async function handleExportXLSX() {
+    if (!validateRange()) return;
+
     const res = await fetch(`/api/projects/${projectId}`);
     if (!res.ok) return;
     const project = await res.json();
 
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Cards
+    // Sheet 1: Cards (filtered by createdAt within the selected range, when set)
     const cardsData = [];
     for (const column of project.columns) {
+      // Skip the synthetic "Arquivadas" column — they're exported via the dedicated flow.
+      if (column.id === "__archived__" || column.isArchive) continue;
       for (const card of column.cards) {
+        if (!inRange(card.createdAt)) continue;
         cardsData.push({
           Coluna: column.name,
           Título: card.title,
-          Prioridade: card.priority,
+          Prioridade: getPriorityLabel(card.priority),
           Responsável: card.assignee?.name || "Não atribuído",
           Criador: card.creator?.name || "",
           Prazo: card.dueDate
@@ -83,17 +118,37 @@ export default function MetricsPage() {
       { Métrica: "Tarefas Não Finalizadas", Valor: metrics.notFinishedCount },
       { Métrica: "Total de Membros", Valor: metrics.memberStats.length },
       { Métrica: "Período", Valor: period === "week" ? "Semana" : period === "month" ? "Mês" : "Trimestre" },
+      { Métrica: "Filtro - Data inicial", Valor: exportStartDate || "—" },
+      { Métrica: "Filtro - Data final", Valor: exportEndDate || "—" },
     ];
     const wsSummary = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, wsSummary, "Resumo");
 
-    XLSX.writeFile(wb, `projeto-metricas-${period}.xlsx`);
+    const suffix = exportStartDate || exportEndDate
+      ? `-${exportStartDate || "inicio"}_a_${exportEndDate || "fim"}`
+      : "";
+    XLSX.writeFile(wb, `projeto-metricas-${period}${suffix}.xlsx`);
   }
 
   async function handleExportArchivedXLSX() {
-    const res = await fetch(`/api/projects/${projectId}/archived-export`);
+    if (!validateRange()) return;
+
+    const params = new URLSearchParams();
+    if (exportStartDate) params.set("startDate", exportStartDate);
+    if (exportEndDate) params.set("endDate", exportEndDate);
+    const qs = params.toString();
+    const url = qs
+      ? `/api/projects/${projectId}/archived-export?${qs}`
+      : `/api/projects/${projectId}/archived-export`;
+
+    const res = await fetch(url);
     if (res.status === 403) {
       alert("Apenas líderes podem exportar tarefas arquivadas.");
+      return;
+    }
+    if (res.status === 400) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || "Filtro de datas inválido.");
       return;
     }
     if (!res.ok) {
@@ -108,15 +163,17 @@ export default function MetricsPage() {
       Coluna: c.columnName,
       Título: c.title,
       Descrição: c.description || "",
-      Prioridade: c.priority,
+      Prioridade: getPriorityLabel(c.priority),
       Responsáveis: c.assigneeNames,
       Criador: c.creatorName,
-      "E-mail Criador": c.creatorEmail,
       Prazo: c.dueDate ? new Date(c.dueDate).toLocaleDateString("pt-BR") : "Sem prazo",
       Lembrete: c.reminderDate
         ? new Date(c.reminderDate).toLocaleDateString("pt-BR")
         : "",
       "Criado em": new Date(c.createdAt).toLocaleDateString("pt-BR"),
+      "Arquivado em": c.archivedAt
+        ? new Date(c.archivedAt).toLocaleDateString("pt-BR")
+        : "",
       "Atualizado em": new Date(c.updatedAt).toLocaleDateString("pt-BR"),
     }));
 
@@ -128,7 +185,10 @@ export default function MetricsPage() {
     XLSX.utils.book_append_sheet(wb, ws, "Arquivadas");
 
     const safeName = (data.project?.name || "projeto").replace(/[^a-z0-9-_]+/gi, "-");
-    XLSX.writeFile(wb, `${safeName}-arquivadas.xlsx`);
+    const suffix = exportStartDate || exportEndDate
+      ? `-${exportStartDate || "inicio"}_a_${exportEndDate || "fim"}`
+      : "";
+    XLSX.writeFile(wb, `${safeName}-arquivadas${suffix}.xlsx`);
   }
 
   if (loading || !metrics) {
@@ -140,6 +200,7 @@ export default function MetricsPage() {
   }
 
   const maxColumnCount = Math.max(...metrics.columnStats.map((c) => c.count), 1);
+  const today = localTodayString();
 
   return (
     <div className="min-h-screen bg-background">
@@ -154,7 +215,7 @@ export default function MetricsPage() {
             </button>
             <h1 className="text-base sm:text-xl font-bold text-gray-900">Métricas</h1>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <button
               onClick={handleExportXLSX}
               className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2"
@@ -197,6 +258,65 @@ export default function MetricsPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Date range filter — applies to both export flows. */}
+        <div className="mx-auto max-w-6xl px-4 pb-3 sm:px-6">
+          <div className="flex flex-col gap-2 rounded-lg bg-gray-50 p-3 sm:flex-row sm:items-end sm:gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500">
+                Filtro de período (exportações)
+              </label>
+              <p className="text-xs text-gray-400">
+                Aplica-se a &ldquo;Exportar XLSX&rdquo; e &ldquo;Exportar Arquivadas&rdquo;. Deixe em branco para exportar tudo.
+              </p>
+            </div>
+            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-500">Data inicial</label>
+                <input
+                  type="date"
+                  value={exportStartDate}
+                  max={exportEndDate || today}
+                  onChange={(e) => {
+                    setExportStartDate(e.target.value);
+                    if (exportRangeError) setExportRangeError("");
+                  }}
+                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-500">Data final</label>
+                <input
+                  type="date"
+                  value={exportEndDate}
+                  min={exportStartDate || undefined}
+                  max={today}
+                  onChange={(e) => {
+                    setExportEndDate(e.target.value);
+                    if (exportRangeError) setExportRangeError("");
+                  }}
+                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+              {(exportStartDate || exportEndDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExportStartDate("");
+                    setExportEndDate("");
+                    setExportRangeError("");
+                  }}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+          </div>
+          {exportRangeError && (
+            <p className="mt-1 text-xs text-red-500">{exportRangeError}</p>
+          )}
         </div>
       </header>
 

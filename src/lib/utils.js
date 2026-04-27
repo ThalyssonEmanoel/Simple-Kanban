@@ -69,3 +69,54 @@ export function getInitials(name) {
     .toUpperCase()
     .slice(0, 2);
 }
+
+// YYYY-MM-DD for "today" in local time. Used to validate date inputs (reminder/due)
+// against the user's calendar day, not UTC midnight.
+export function localTodayString() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+}
+
+// Checklist syntax in card description: lines starting with `- [ ]` or `- [x]`.
+// Parser is forgiving (extra spaces, capital X) but the canonical form below is what we write back.
+const CHECKLIST_LINE = /^(\s*)-\s\[([ xX])\]\s?(.*)$/;
+
+export function parseChecklist(description) {
+  if (!description) return [];
+  const items = [];
+  const lines = description.split(/\r?\n/);
+  lines.forEach((line, idx) => {
+    const m = line.match(CHECKLIST_LINE);
+    if (m) {
+      items.push({
+        index: idx,
+        checked: m[2].toLowerCase() === "x",
+        text: m[3],
+      });
+    }
+  });
+  return items;
+}
+
+// Toggle the checklist item at `lineIndex`, returning { description, item } where
+// `item` describes the toggled item (text + new state) for activity logging.
+export function toggleChecklistItem(description, lineIndex) {
+  if (!description) return { description, item: null };
+  const lines = description.split(/\r?\n/);
+  if (lineIndex < 0 || lineIndex >= lines.length) {
+    return { description, item: null };
+  }
+  const line = lines[lineIndex];
+  const m = line.match(CHECKLIST_LINE);
+  if (!m) return { description, item: null };
+
+  const [, indent, mark, text] = m;
+  const wasChecked = mark.toLowerCase() === "x";
+  const nextMark = wasChecked ? " " : "x";
+  lines[lineIndex] = `${indent}- [${nextMark}] ${text}`;
+
+  return {
+    description: lines.join("\n"),
+    item: { text, checked: !wasChecked },
+  };
+}

@@ -25,6 +25,21 @@ export async function POST(request) {
       return NextResponse.json({ error: "Título é obrigatório" }, { status: 400 });
     }
 
+    if (reminderDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const reminder = new Date(reminderDate);
+      if (!Number.isNaN(reminder.getTime())) {
+        reminder.setHours(0, 0, 0, 0);
+        if (reminder.getTime() < today.getTime()) {
+          return NextResponse.json(
+            { error: "A data do lembrete não pode ser anterior à data atual" },
+            { status: 400 }
+          );
+        }
+      }
+    }
+
     const maxPosition = await prisma.card.aggregate({
       where: { columnId },
       _max: { position: true },

@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser, getUserRole } from "@/lib/auth";
+import { toggleChecklistItem } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+// Reminder dates set in the past are rejected — they are useless and signal a typo.
+function isReminderInPast(value) {
+  if (!value) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return false;
+  target.setHours(0, 0, 0, 0);
+  return target.getTime() < today.getTime();
+}
 
 export async function GET(request, { params }) {
   try {
@@ -90,15 +102,33 @@ export async function PUT(request, { params }) {
 
     const updateData = {};
     const logDetails = [];
+    const extraLogs = [];
 
     if (data.title !== undefined) {
       updateData.title = data.title.trim();
       logDetails.push("título atualizado");
     }
-    if (data.description !== undefined) {
+
+    // Checklist toggle: pass `{ toggleChecklistIndex: <lineIndex> }` to flip a single item.
+    // The description is rewritten and a dedicated activity log entry is emitted with
+    // the item text, the new state, and the actor — meeting the Feature-5 audit requirement.
+    if (data.toggleChecklistIndex !== undefined) {
+      const idx = Number(data.toggleChecklistIndex);
+      if (Number.isInteger(idx)) {
+        const result = toggleChecklistItem(card.description || "", idx);
+        if (result.item) {
+          updateData.description = result.description;
+          extraLogs.push({
+            action: result.item.checked ? "CHECKLIST_CHECKED" : "CHECKLIST_UNCHECKED",
+            details: `${result.item.checked ? "Marcou" : "Desmarcou"} item da lista: "${result.item.text}"`,
+          });
+        }
+      }
+    } else if (data.description !== undefined) {
       updateData.description = data.description?.trim() || null;
       logDetails.push("descrição atualizada");
     }
+
     if (data.priority !== undefined) {
       updateData.priority = data.priority;
       logDetails.push(`prioridade alterada para ${data.priority}`);
@@ -108,11 +138,48 @@ export async function PUT(request, { params }) {
       logDetails.push("prazo atualizado");
     }
     if (data.reminderDate !== undefined) {
+      if (data.reminderDate && isReminderInPast(data.reminderDate)) {
+        return NextResponse.json(
+          { error: "A data do lembrete não pode ser anterior à data atual" },
+          { status: 400 }
+        );
+      }
       updateData.reminderDate = data.reminderDate ? new Date(data.reminderDate) : null;
       logDetails.push("data de lembrete atualizada");
     }
     if (data.archived !== undefined) {
+      // Toggling archive is restricted: the card's responsável (any assignee or
+      // primary assignee) or a Leader can archive; only Leaders can un-archive
+      // (reactivation flow described in Feature-5).
+      if (data.archived === true) {
+        const canArchive = role === "LEADER" || isAssigned;
+        if (!canArchive) {
+          return NextResponse.json(
+            { error: "Apenas o responsável pela tarefa ou um Líder pode arquivá-la" },
+            { status: 403 }
+          );
+        }
+      } else if (role !== "LEADER") {
+        return NextResponse.json(
+          { error: "Apenas Líderes podem reativar tarefas arquivadas" },
+          { status: 403 }
+        );
+      }
+
       updateData.archived = data.archived;
+      if (data.archived) {
+        updateData.archivedAt = new Date();
+        // Remember where the card lived before archive so a Leader can restore it.
+        updateData.previousColumnId = card.columnId;
+      } else {
+        updateData.archivedAt = null;
+        // Move the card back to its previous column if it still exists; otherwise
+        // leave it where the move endpoint placed it.
+        if (card.previousColumnId && data.columnId === undefined) {
+          updateData.columnId = card.previousColumnId;
+        }
+        updateData.previousColumnId = null;
+      }
       logDetails.push(data.archived ? "cartão arquivado" : "cartão restaurado");
     }
 
@@ -197,6 +264,17 @@ export async function PUT(request, { params }) {
         data: {
           action: "CARD_UPDATED",
           details: logDetails.join(", "),
+          cardId: card.id,
+          userId: user.id,
+        },
+      });
+    }
+
+    for (const entry of extraLogs) {
+      await prisma.activityLog.create({
+        data: {
+          action: entry.action,
+          details: entry.details,
           cardId: card.id,
           userId: user.id,
         },
