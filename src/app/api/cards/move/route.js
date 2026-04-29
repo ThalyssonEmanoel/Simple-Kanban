@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser, getUserRole } from "@/lib/auth";
 
+const ARCHIVED_COLUMN_ID = "__archived__";
+
 export async function PUT(request) {
   try {
     const user = await requireUser();
@@ -15,10 +17,116 @@ export async function PUT(request) {
 
     const card = await prisma.card.findUnique({
       where: { id: cardId },
-      select: { id: true, columnId: true, position: true, assigneeId: true, creatorId: true },
+      select: {
+        id: true,
+        columnId: true,
+        position: true,
+        assigneeId: true,
+        creatorId: true,
+        archived: true,
+        previousColumnId: true,
+      },
     });
     if (!card) {
       return NextResponse.json({ error: "Cartão não encontrado" }, { status: 404 });
+    }
+
+    // Special "Arquivadas" column flows. The archived column does not exist as a real row
+    // — it's synthesized for Leaders by the project GET — so dragging into/out of it
+    // toggles `archived` instead of issuing a normal move.
+    const draggingIntoArchive = destinationColumnId === ARCHIVED_COLUMN_ID;
+    const draggingOutOfArchive = sourceColumnId === ARCHIVED_COLUMN_ID;
+
+    if (draggingIntoArchive || draggingOutOfArchive) {
+      if (role !== "LEADER") {
+        return NextResponse.json(
+          { error: "Apenas Líderes podem mover cartões para/da coluna Arquivadas" },
+          { status: 403 }
+        );
+      }
+
+      if (draggingIntoArchive) {
+        await prisma.$transaction([
+          // Vacate the slot in the source column.
+          prisma.card.updateMany({
+            where: {
+              columnId: card.columnId,
+              archived: false,
+              position: { gt: card.position },
+            },
+            data: { position: { decrement: 1 } },
+          }),
+          prisma.card.update({
+            where: { id: cardId },
+            data: {
+              archived: true,
+              archivedAt: new Date(),
+              previousColumnId: card.columnId,
+            },
+          }),
+          prisma.activityLog.create({
+            data: {
+              action: "CARD_ARCHIVED",
+              details: "Cartão arquivado",
+              cardId,
+              userId: user.id,
+            },
+          }),
+        ]);
+
+        return NextResponse.json({
+          message: "Cartão arquivado",
+          cardId,
+          archived: true,
+        });
+      }
+
+      // Out-of-archive: reactivate the card. Destination column must be a real column.
+      const targetColumnId = card.previousColumnId || destinationColumnId;
+      const targetColumn = await prisma.column.findUnique({
+        where: { id: targetColumnId },
+        select: { id: true, name: true, projectId: true },
+      });
+      if (!targetColumn || targetColumn.projectId !== projectId) {
+        return NextResponse.json(
+          { error: "Coluna de destino inválida para reativação" },
+          { status: 400 }
+        );
+      }
+
+      const tail = await prisma.card.aggregate({
+        where: { columnId: targetColumn.id, archived: false },
+        _max: { position: true },
+      });
+      const insertPosition = (tail._max.position ?? -1) + 1;
+
+      await prisma.$transaction([
+        prisma.card.update({
+          where: { id: cardId },
+          data: {
+            archived: false,
+            archivedAt: null,
+            previousColumnId: null,
+            columnId: targetColumn.id,
+            position: insertPosition,
+          },
+        }),
+        prisma.activityLog.create({
+          data: {
+            action: "CARD_RESTORED",
+            details: `Cartão restaurado para "${targetColumn.name}"`,
+            cardId,
+            userId: user.id,
+          },
+        }),
+      ]);
+
+      return NextResponse.json({
+        message: "Cartão restaurado",
+        cardId,
+        columnId: targetColumn.id,
+        position: insertPosition,
+      });
     }
 
     // Members can only move their own cards
