@@ -5,10 +5,16 @@ import { Draggable, Droppable } from "@hello-pangea/dnd";
 import Card from "./Card";
 import AddCard from "./AddCard";
 
+const ARCHIVED_COLUMN_ID = "__archived__";
+
 export default function Column({ column, cards, index, project, setProject, onCardClick, onRefresh, userRole }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(column.name);
   const [showMenu, setShowMenu] = useState(false);
+  const [archivingAll, setArchivingAll] = useState(false);
+
+  const isArchiveColumn = column.id === ARCHIVED_COLUMN_ID || column.isArchive === true;
+  const isFinalized = column.name === "Finalizadas" || column.name === "Done";
 
   async function handleRename(e) {
     e.preventDefault();
@@ -40,14 +46,89 @@ export default function Column({ column, cards, index, project, setProject, onCa
     onRefresh();
   }
 
+  async function handleArchiveAll() {
+    if (cards.length === 0) {
+      setShowMenu(false);
+      return;
+    }
+    if (!confirm(`Arquivar todas as ${cards.length} tarefa(s) da coluna "${column.name}"?`)) {
+      return;
+    }
+    setArchivingAll(true);
+    setShowMenu(false);
+    try {
+      const res = await fetch(`/api/columns/${column.id}/archive-all`, { method: "PUT" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Não foi possível arquivar as tarefas.");
+      }
+    } finally {
+      setArchivingAll(false);
+      onRefresh();
+    }
+  }
+
   const columnColors = {
     "A fazer": "bg-amber-500",
     "Finalizadas": "bg-green-600",
     "To Do": "bg-amber-500",
     "Done": "bg-green-600",
+    "Arquivadas": "bg-gray-500",
   };
 
   const dotColor = columnColors[column.name] || "bg-emerald-400";
+
+  // The archived column is read-only (drag-only). It has no AddCard footer,
+  // can't be renamed, and is rendered as a non-draggable shell so Leaders cannot
+  // accidentally reorder it among the real columns.
+  if (isArchiveColumn) {
+    return (
+      <div className="flex w-[260px] sm:w-72 shrink-0 flex-col rounded-xl bg-gray-200/70 border border-gray-300">
+        <div className="flex items-center justify-between px-3 py-3">
+          <div className="flex items-center gap-2">
+            <div className={`h-2.5 w-2.5 rounded-full ${dotColor}`}></div>
+            <h3 className="text-sm font-semibold text-gray-700">{column.name}</h3>
+            <span className="rounded-full bg-gray-300 px-2 py-0.5 text-xs font-medium text-gray-600">
+              {cards.length}
+            </span>
+          </div>
+          <span
+            title="Após 7 dias sem movimentação a tarefa sai do board. Continua acessível em Exportar Arquivadas."
+            className="text-[10px] uppercase tracking-wide text-gray-500"
+          >
+            7 dias
+          </span>
+        </div>
+
+        <Droppable droppableId={column.id} type="CARD">
+          {(provided, snapshot) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className={`flex-1 space-y-2 overflow-y-auto px-3 pb-3 min-h-[60px] rounded-b-xl transition-colors ${
+                snapshot.isDraggingOver ? "bg-blue-50/60" : ""
+              }`}
+            >
+              {cards.length === 0 && (
+                <p className="px-1 py-3 text-center text-xs text-gray-500">
+                  Nenhuma tarefa arquivada nos últimos 7 dias.
+                </p>
+              )}
+              {cards.map((card, cardIndex) => (
+                <Card
+                  key={card.id}
+                  card={card}
+                  index={cardIndex}
+                  onClick={() => onCardClick(card.id)}
+                />
+              ))}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </div>
+    );
+  }
 
   return (
     <Draggable draggableId={column.id} index={index}>
@@ -83,7 +164,7 @@ export default function Column({ column, cards, index, project, setProject, onCa
               </span>
             </div>
 
-            {!column.isDefault && userRole === "LEADER" && (
+            {userRole === "LEADER" && (!column.isDefault || isFinalized) && (
               <div className="relative">
                 <button
                   onClick={() => setShowMenu(!showMenu)}
@@ -94,22 +175,35 @@ export default function Column({ column, cards, index, project, setProject, onCa
                   </svg>
                 </button>
                 {showMenu && (
-                  <div className="absolute right-0 top-full z-10 mt-1 w-36 rounded-lg bg-white shadow-lg border border-gray-200">
-                    <button
-                      onClick={() => {
-                        setEditing(true);
-                        setShowMenu(false);
-                      }}
-                      className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                    >
-                      Renomear
-                    </button>
-                    <button
-                      onClick={handleDelete}
-                      className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                    >
-                      Excluir
-                    </button>
+                  <div className="absolute right-0 top-full z-10 mt-1 w-44 rounded-lg bg-white shadow-lg border border-gray-200">
+                    {!column.isDefault && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditing(true);
+                            setShowMenu(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          Renomear
+                        </button>
+                        <button
+                          onClick={handleDelete}
+                          className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                        >
+                          Excluir
+                        </button>
+                      </>
+                    )}
+                    {isFinalized && (
+                      <button
+                        onClick={handleArchiveAll}
+                        disabled={archivingAll || cards.length === 0}
+                        className="w-full px-3 py-2 text-left text-sm text-amber-700 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Arquivar todas ({cards.length})
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

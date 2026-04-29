@@ -73,15 +73,17 @@ model Card {
   reminderDate DateTime?
   position     Int
   archived     Boolean   @default(false)
+  archivedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  columnId   String
-  column     Column @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  creatorId  String
-  creator    User   @relation("CardCreator", fields: [creatorId], references: [id])
-  assigneeId String?
-  assignee   User?  @relation("CardAssignee", fields: [assigneeId], references: [id])
+  columnId         String
+  column           Column @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  previousColumnId String?
+  creatorId        String
+  creator          User   @relation("CardCreator", fields: [creatorId], references: [id])
+  assigneeId       String?
+  assignee         User?  @relation("CardAssignee", fields: [assigneeId], references: [id])
 
   comments      Comment[]
   attachments   Attachment[]
@@ -93,6 +95,8 @@ model Card {
   @@index([columnId, archived, position])
   // Hot path: reminder sweeper — fetch cards with a past reminderDate that are not archived.
   @@index([reminderDate, archived])
+  // Hot path: archived view + 7-day retention sweep.
+  @@index([archived, archivedAt])
 }
 
 model CardAssignee {
@@ -108,9 +112,10 @@ model CardAssignee {
 }
 
 model Comment {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   content   String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
+  editedAt  DateTime?
 
   cardId   String
   card     Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
