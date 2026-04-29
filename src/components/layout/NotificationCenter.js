@@ -2,25 +2,22 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import useSWR from "swr";
 import { formatDateTime } from "@/lib/utils";
 
 export default function NotificationCenter() {
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { data, mutate } = useSWR("/api/notifications", {
+    // Poll once per minute while focused; SWR pauses polling when the tab is
+    // hidden automatically.
+    refreshInterval: 60000,
+    refreshWhenHidden: false,
+  });
+  const notifications = data?.notifications ?? [];
+  const unreadCount = data?.unreadCount ?? 0;
+
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const router = useRouter();
-
-  useEffect(() => {
-    loadNotifications();
-    // Poll at 60s and pause while the tab is hidden to cut backend load.
-    const interval = setInterval(() => {
-      if (typeof document === "undefined" || document.visibilityState === "visible") {
-        loadNotifications();
-      }
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     function handleClick(e) {
@@ -32,33 +29,38 @@ export default function NotificationCenter() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  async function loadNotifications() {
-    const res = await fetch("/api/notifications");
-    if (res.ok) {
-      const data = await res.json();
-      setNotifications(data.notifications);
-      setUnreadCount(data.unreadCount);
-    }
-  }
-
   async function markAllRead() {
+    // Optimistic local update — flip read flags immediately, revalidate later.
+    mutate(
+      (prev) => ({
+        notifications: (prev?.notifications ?? []).map((n) => ({ ...n, read: true })),
+        unreadCount: 0,
+      }),
+      { revalidate: false }
+    );
     await fetch("/api/notifications", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ readAll: true }),
     });
-    setUnreadCount(0);
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   }
 
   async function handleClick(notification) {
     if (!notification.read) {
+      mutate(
+        (prev) => ({
+          notifications: (prev?.notifications ?? []).map((n) =>
+            n.id === notification.id ? { ...n, read: true } : n
+          ),
+          unreadCount: Math.max(0, (prev?.unreadCount ?? 1) - 1),
+        }),
+        { revalidate: false }
+      );
       await fetch("/api/notifications", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notificationId: notification.id }),
       });
-      setUnreadCount((c) => Math.max(0, c - 1));
     }
 
     if (notification.card?.column?.projectId) {

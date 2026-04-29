@@ -1,7 +1,10 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import prisma from "@/lib/prisma";
 
-export async function getCurrentUser() {
+// React.cache dedupes within a single request: multiple handlers/middleware
+// hitting requireUser/getUserRole in the same request share one DB roundtrip.
+export const getCurrentUser = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user: authUser },
@@ -11,6 +14,7 @@ export async function getCurrentUser() {
 
   let user = await prisma.user.findUnique({
     where: { authId: authUser.id },
+    select: { id: true, name: true, email: true, image: true, authId: true },
   });
 
   if (!user) {
@@ -21,28 +25,28 @@ export async function getCurrentUser() {
         email: authUser.email,
         image: authUser.user_metadata?.avatar_url || null,
       },
+      select: { id: true, name: true, email: true, image: true, authId: true },
     });
   }
 
   return user;
-}
+});
 
-export async function requireUser() {
+export const requireUser = cache(async () => {
   const user = await getCurrentUser();
   if (!user) {
     throw new Error("Unauthorized");
   }
   return user;
-}
+});
 
-export async function getUserRole(userId, projectId) {
+export const getUserRole = cache(async (userId, projectId) => {
   const member = await prisma.projectMember.findUnique({
-    where: {
-      userId_projectId: { userId, projectId },
-    },
+    where: { userId_projectId: { userId, projectId } },
+    select: { role: true },
   });
   return member?.role || null;
-}
+});
 
 export async function requireProjectAccess(userId, projectId) {
   const role = await getUserRole(userId, projectId);

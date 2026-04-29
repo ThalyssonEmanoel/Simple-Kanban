@@ -1,35 +1,25 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import useSWR from "swr";
 import { getInitials, getPriorityLabel, localTodayString } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
 export default function MetricsPage() {
   const { projectId } = useParams();
   const router = useRouter();
-  const [metrics, setMetrics] = useState(null);
   const [period, setPeriod] = useState("week");
-  const [loading, setLoading] = useState(true);
+
+  const { data: metrics, isLoading } = useSWR(
+    projectId ? `/api/metrics?projectId=${projectId}&period=${period}` : null
+  );
+  const loading = isLoading && !metrics;
 
   // Date range filter shared by both export flows. Empty strings mean "no bound".
   const [exportStartDate, setExportStartDate] = useState("");
   const [exportEndDate, setExportEndDate] = useState("");
   const [exportRangeError, setExportRangeError] = useState("");
-
-  const loadMetrics = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch(`/api/metrics?projectId=${projectId}&period=${period}`);
-    if (res.ok) {
-      const data = await res.json();
-      setMetrics(data);
-    }
-    setLoading(false);
-  }, [projectId, period]);
-
-  useEffect(() => {
-    loadMetrics();
-  }, [loadMetrics]);
 
   function validateRange() {
     if (exportStartDate && exportEndDate && exportStartDate > exportEndDate) {

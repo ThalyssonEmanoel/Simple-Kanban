@@ -26,73 +26,90 @@ export async function GET(request) {
       startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     }
 
-    // Tasks completed in period (supports both old "Done" and new "Finalizadas")
-    const doneColumn = await prisma.column.findFirst({
-      where: { projectId, name: { in: ["Finalizadas", "Done"] } },
-    });
-
-    const completedCards = doneColumn
-      ? await prisma.card.findMany({
-          where: {
-            columnId: doneColumn.id,
-            updatedAt: { gte: startDate },
-            archived: false,
-          },
-        })
-      : [];
-
-    // Tasks in "A fazer" / "To Do" column
-    const todoColumn = await prisma.column.findFirst({
-      where: { projectId, name: { in: ["A fazer", "To Do"] } },
-    });
-
-    const todoCount = todoColumn
-      ? await prisma.card.count({
-          where: { columnId: todoColumn.id, archived: false },
-        })
-      : 0;
-
-    // Tasks not finished (all cards NOT in "Finalizadas"/"Done")
-    const doneColumnIds = await prisma.column.findMany({
-      where: { projectId, name: { in: ["Finalizadas", "Done"] } },
-      select: { id: true },
-    });
-    const doneIds = doneColumnIds.map((c) => c.id);
-
-    const notFinishedCount = await prisma.card.count({
-      where: {
-        column: { projectId },
-        archived: false,
-        ...(doneIds.length > 0 ? { columnId: { notIn: doneIds } } : {}),
-      },
-    });
-
-    // Tasks per member
-    const members = await prisma.projectMember.findMany({
-      where: { projectId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-            assignedCards: {
-              where: {
-                column: { projectId },
-                archived: false,
-              },
-              include: { column: { select: { name: true } } },
-            },
-          },
+    // Run all read queries in parallel — they're independent.
+    const [columns, cardGroups, members] = await Promise.all([
+      prisma.column.findMany({
+        where: { projectId },
+        orderBy: { position: "asc" },
+        select: { id: true, name: true },
+      }),
+      prisma.card.groupBy({
+        by: ["columnId"],
+        where: { column: { projectId }, archived: false },
+        _count: { _all: true },
+      }),
+      prisma.projectMember.findMany({
+        where: { projectId },
+        select: {
+          role: true,
+          user: { select: { id: true, name: true, image: true } },
         },
-      },
-    });
+      }),
+    ]);
+
+    const doneColumnIds = columns
+      .filter((c) => c.name === "Finalizadas" || c.name === "Done")
+      .map((c) => c.id);
+    const todoColumnIds = columns
+      .filter((c) => c.name === "A fazer" || c.name === "To Do")
+      .map((c) => c.id);
+
+    const memberIds = members.map((m) => m.user.id);
+
+    const [completedCount, todoCount, notFinishedCount, perMemberTotal, perMemberDone] = await Promise.all([
+      doneColumnIds.length > 0
+        ? prisma.card.count({
+            where: {
+              columnId: { in: doneColumnIds },
+              updatedAt: { gte: startDate },
+              archived: false,
+            },
+          })
+        : Promise.resolve(0),
+      todoColumnIds.length > 0
+        ? prisma.card.count({
+            where: { columnId: { in: todoColumnIds }, archived: false },
+          })
+        : Promise.resolve(0),
+      prisma.card.count({
+        where: {
+          column: { projectId },
+          archived: false,
+          ...(doneColumnIds.length > 0 ? { columnId: { notIn: doneColumnIds } } : {}),
+        },
+      }),
+      // Cards per member (legacy single-assignee relation, matching prior semantics).
+      memberIds.length > 0
+        ? prisma.card.groupBy({
+            by: ["assigneeId"],
+            where: {
+              assigneeId: { in: memberIds },
+              column: { projectId },
+              archived: false,
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      memberIds.length > 0 && doneColumnIds.length > 0
+        ? prisma.card.groupBy({
+            by: ["assigneeId"],
+            where: {
+              assigneeId: { in: memberIds },
+              column: { projectId },
+              archived: false,
+              columnId: { in: doneColumnIds },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const totalByUser = new Map(perMemberTotal.map((g) => [g.assigneeId, g._count._all]));
+    const doneByUser = new Map(perMemberDone.map((g) => [g.assigneeId, g._count._all]));
 
     const memberStats = members.map((m) => {
-      const cards = m.user.assignedCards;
-      const done = cards.filter((c) => c.column.name === "Finalizadas" || c.column.name === "Done").length;
-      const total = cards.length;
-
+      const total = totalByUser.get(m.user.id) ?? 0;
+      const done = doneByUser.get(m.user.id) ?? 0;
       return {
         id: m.user.id,
         name: m.user.name,
@@ -104,32 +121,15 @@ export async function GET(request) {
       };
     });
 
-    // Column distribution — archived cards must NOT be counted.
-    // Two-query pattern: fetch columns in order, then groupBy cards where archived = false.
-    const [columns, cardGroups] = await Promise.all([
-      prisma.column.findMany({
-        where: { projectId },
-        orderBy: { position: "asc" },
-        select: { id: true, name: true },
-      }),
-      prisma.card.groupBy({
-        by: ["columnId"],
-        where: { column: { projectId }, archived: false },
-        _count: { _all: true },
-      }),
-    ]);
-
     const columnStats = buildColumnStats(columns, cardGroups);
 
     return NextResponse.json({
-      completedCount: completedCards.length,
+      completedCount,
       todoCount,
       notFinishedCount,
       memberStats,
       columnStats,
       period,
-      // New field (additive, backward-compatible). Lets the UI gate leader-only
-      // controls. Backend role checks are still enforced independently.
       currentUserRole,
     });
   } catch {

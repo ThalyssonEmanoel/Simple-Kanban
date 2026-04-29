@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
+import useSWR from "swr";
 import { createClient } from "@/lib/supabase/client";
 import Board from "@/components/board/Board";
 import Navbar from "@/components/layout/Navbar";
@@ -12,11 +13,8 @@ export default function ProjectPage() {
   const { projectId } = useParams();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const [project, setProject] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [selectedCard, setSelectedCard] = useState(null);
-  const [userRole, setUserRole] = useState(null);
-  const [currentUserId, setCurrentUserId] = useState(null);
+  const [authUser, setAuthUser] = useState(null);
   const [onlineUserIds, setOnlineUserIds] = useState([]);
   const [filters, setFilters] = useState({
     search: "",
@@ -24,29 +22,52 @@ export default function ProjectPage() {
     priority: "",
   });
 
-  const loadProject = useCallback(async () => {
-    const res = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      setProject(data);
+  const {
+    data: project,
+    error,
+    isLoading,
+    mutate,
+  } = useSWR(projectId ? `/api/projects/${projectId}` : null);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && data.members) {
-        const member = data.members.find((m) => m.user.email === user.email);
-        setUserRole(member?.role || null);
-        setCurrentUserId(member?.user?.id || null);
-      }
-    } else if (res.status === 401 || res.status === 403) {
-      router.push("/");
-    }
-    setLoading(false);
-  }, [projectId, router, supabase.auth]);
+  // Local optimistic setter wrapping SWR's mutate. Keeps the same surface that
+  // Board/AddCard already use so we don't have to rewrite their state model.
+  const setProject = (updater) => {
+    mutate(
+      (current) => {
+        if (typeof updater === "function") return updater(current);
+        return updater;
+      },
+      { revalidate: false }
+    );
+  };
+
+  const onRefresh = () => mutate();
 
   useEffect(() => {
-    loadProject();
-  }, [loadProject]);
+    if (error?.status === 401 || error?.status === 403) {
+      router.push("/");
+    }
+  }, [error, router]);
 
-  // Supabase Realtime Presence: tracks who is currently viewing this project
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data }) => {
+      if (!cancelled) setAuthUser(data?.user ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  const currentMember = useMemo(() => {
+    if (!project || !authUser) return null;
+    return project.members?.find((m) => m.user.email === authUser.email) || null;
+  }, [project, authUser]);
+
+  const userRole = currentMember?.role || null;
+  const currentUserId = currentMember?.user?.id || null;
+
+  // Supabase Realtime Presence
   useEffect(() => {
     if (!currentUserId || !projectId) return;
 
@@ -76,7 +97,7 @@ export default function ProjectPage() {
     return project.members.filter((m) => set.has(m.user.id));
   }, [project, onlineUserIds]);
 
-  if (loading) {
+  if (isLoading && !project) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
@@ -94,7 +115,7 @@ export default function ProjectPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <Navbar project={project} onRefresh={loadProject} onlineMembers={onlineMembers} />
+      <Navbar project={project} onRefresh={onRefresh} onlineMembers={onlineMembers} />
       <FilterBar
         filters={filters}
         setFilters={setFilters}
@@ -106,7 +127,7 @@ export default function ProjectPage() {
           setProject={setProject}
           filters={filters}
           onCardClick={setSelectedCard}
-          onRefresh={loadProject}
+          onRefresh={onRefresh}
           userRole={userRole}
         />
       </div>
@@ -115,7 +136,7 @@ export default function ProjectPage() {
           cardId={selectedCard}
           project={project}
           onClose={() => setSelectedCard(null)}
-          onRefresh={loadProject}
+          onRefresh={onRefresh}
           currentUserId={currentUserId}
           userRole={userRole}
         />

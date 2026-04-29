@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import useSWR from "swr";
 import {
   formatDate,
   formatDateTime,
@@ -14,8 +15,12 @@ import {
 } from "@/lib/utils";
 
 export default function CardModal({ cardId, project, onClose, onRefresh, currentUserId, userRole }) {
-  const [card, setCard] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: card,
+    isLoading: cardLoading,
+    mutate: mutateCard,
+  } = useSWR(cardId ? `/api/cards/${cardId}` : null);
+  const loading = cardLoading && !card;
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -30,29 +35,23 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
   const [editingCommentText, setEditingCommentText] = useState("");
   const [togglingChecklist, setTogglingChecklist] = useState(null);
 
-  const loadCard = useCallback(async () => {
-    const res = await fetch(`/api/cards/${cardId}`, { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      setCard(data);
-      setTitle(data.title);
-      setDescription(data.description || "");
-      setPriority(data.priority);
-      setDueDate(toDateOnlyString(data.dueDate));
-      setReminderDate(toDateOnlyString(data.reminderDate));
-      const ids = Array.isArray(data.assignees) && data.assignees.length > 0
-        ? data.assignees.map((a) => a.user.id)
-        : data.assigneeId
-          ? [data.assigneeId]
-          : [];
-      setAssigneeIds(ids);
-    }
-    setLoading(false);
-  }, [cardId]);
+  const loadCard = useCallback(() => mutateCard(), [mutateCard]);
 
+  // Hydrate the editable form fields whenever a fresh card payload arrives.
   useEffect(() => {
-    loadCard();
-  }, [loadCard]);
+    if (!card) return;
+    setTitle(card.title);
+    setDescription(card.description || "");
+    setPriority(card.priority);
+    setDueDate(toDateOnlyString(card.dueDate));
+    setReminderDate(toDateOnlyString(card.reminderDate));
+    const ids = Array.isArray(card.assignees) && card.assignees.length > 0
+      ? card.assignees.map((a) => a.user.id)
+      : card.assigneeId
+        ? [card.assigneeId]
+        : [];
+    setAssigneeIds(ids);
+  }, [card]);
 
   const canManageAssignees =
     userRole === "LEADER" || (card && currentUserId && card.creatorId === currentUserId);
