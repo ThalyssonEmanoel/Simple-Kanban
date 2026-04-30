@@ -33,7 +33,7 @@ export async function GET(request, { params }) {
           },
         },
         comments: {
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: "desc" },
           include: {
             author: { select: { id: true, name: true, image: true } },
           },

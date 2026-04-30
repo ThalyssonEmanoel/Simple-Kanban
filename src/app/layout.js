@@ -1,7 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
-import { headers } from "next/headers";
 import "./globals.css";
 import PWARegister from "@/components/pwa/PWARegister";
+import SWRProvider from "@/components/layout/SWRProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,8 +18,7 @@ export const metadata = {
   description: "Plataforma de gerenciamento visual de tarefas baseada em Kanban",
 };
 
-export default async function RootLayout({ children }) {
-  await headers();
+export default function RootLayout({ children }) {
   return (
     <html
       lang="pt-BR"
@@ -30,7 +29,7 @@ export default async function RootLayout({ children }) {
       </head>
       <body className="min-h-full flex flex-col">
         <PWARegister />
-        {children}
+        <SWRProvider>{children}</SWRProvider>
       </body>
     </html>
   );

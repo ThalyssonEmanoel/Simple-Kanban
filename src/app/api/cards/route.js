@@ -40,11 +40,6 @@ export async function POST(request) {
       }
     }
 
-    const maxPosition = await prisma.card.aggregate({
-      where: { columnId },
-      _max: { position: true },
-    });
-
     // Normalize assignee input: prefer assigneeIds (array); fall back to legacy assigneeId
     const normalizedAssigneeIds = Array.isArray(assigneeIds)
       ? [...new Set(assigneeIds.filter(Boolean))]
@@ -52,32 +47,42 @@ export async function POST(request) {
         ? [assigneeId]
         : [];
 
+    if (normalizedAssigneeIds.length === 0) {
+      normalizedAssigneeIds.push(user.id);
+    }
+
     const primaryAssigneeId = normalizedAssigneeIds[0] || null;
 
-    const card = await prisma.card.create({
-      data: {
-        title: title.trim(),
-        description: description?.trim() || null,
-        priority: priority || "MEDIUM",
-        dueDate: dueDate ? new Date(dueDate) : null,
-        reminderDate: reminderDate ? new Date(reminderDate) : null,
-        position: (maxPosition._max.position ?? -1) + 1,
-        columnId,
-        creatorId: user.id,
-        assigneeId: primaryAssigneeId,
-        assignees: {
-          create: normalizedAssigneeIds.map((uid) => ({ userId: uid })),
+    const [, card] = await prisma.$transaction([
+      prisma.card.updateMany({
+        where: { columnId, archived: false },
+        data: { position: { increment: 1 } },
+      }),
+      prisma.card.create({
+        data: {
+          title: title.trim(),
+          description: description?.trim() || null,
+          priority: priority || "MEDIUM",
+          dueDate: dueDate ? new Date(dueDate) : null,
+          reminderDate: reminderDate ? new Date(reminderDate) : null,
+          position: 0,
+          columnId,
+          creatorId: user.id,
+          assigneeId: primaryAssigneeId,
+          assignees: {
+            create: normalizedAssigneeIds.map((uid) => ({ userId: uid })),
+          },
         },
-      },
-      include: {
-        creator: { select: { id: true, name: true, image: true } },
-        assignee: { select: { id: true, name: true, image: true } },
-        assignees: {
-          include: { user: { select: { id: true, name: true, image: true } } },
+        include: {
+          creator: { select: { id: true, name: true, image: true } },
+          assignee: { select: { id: true, name: true, image: true } },
+          assignees: {
+            include: { user: { select: { id: true, name: true, image: true } } },
+          },
+          _count: { select: { comments: true, attachments: true } },
         },
-        _count: { select: { comments: true, attachments: true } },
-      },
-    });
+      }),
+    ]);
 
     await prisma.activityLog.create({
       data: {
