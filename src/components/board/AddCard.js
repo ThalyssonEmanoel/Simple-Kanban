@@ -31,7 +31,7 @@ export default function AddCard({ columnId, projectId, project, setProject, onRe
       };
 
       const newColumns = project.columns.map((col) =>
-        col.id === columnId ? { ...col, cards: [...col.cards, optimisticCard] } : col
+        col.id === columnId ? { ...col, cards: [optimisticCard, ...col.cards] } : col
       );
       setProject({ ...project, columns: newColumns });
     }

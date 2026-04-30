@@ -15,67 +15,68 @@ export async function GET(request, { params }) {
     const { projectId } = await params;
     const role = await requireProjectAccess(user.id, projectId);
 
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        owner: { select: { id: true, name: true, image: true, email: true } },
-        members: {
-          include: {
-            user: { select: { id: true, name: true, image: true, email: true } },
+    // Run the project tree fetch and the archived-cards fetch in parallel for
+    // Leaders. Members never see the archive column, so we skip it.
+    const cutoff = new Date(Date.now() - ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+
+    const [project, archivedCards] = await Promise.all([
+      prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          owner: { select: { id: true, name: true, image: true, email: true } },
+          members: {
+            include: {
+              user: { select: { id: true, name: true, image: true, email: true } },
+            },
           },
-        },
-        columns: {
-          orderBy: { position: "asc" },
-          include: {
-            cards: {
-              where: { archived: false },
-              orderBy: { position: "asc" },
-              include: {
-                creator: { select: { id: true, name: true, image: true } },
-                assignee: { select: { id: true, name: true, image: true } },
-                assignees: {
-                  include: {
-                    user: { select: { id: true, name: true, image: true } },
+          columns: {
+            orderBy: { position: "asc" },
+            include: {
+              cards: {
+                where: { archived: false },
+                orderBy: { position: "asc" },
+                include: {
+                  creator: { select: { id: true, name: true, image: true } },
+                  assignee: { select: { id: true, name: true, image: true } },
+                  assignees: {
+                    include: {
+                      user: { select: { id: true, name: true, image: true } },
+                    },
                   },
+                  _count: { select: { comments: true, attachments: true } },
                 },
-                _count: { select: { comments: true, attachments: true } },
               },
             },
           },
         },
-      },
-    });
+      }),
+      role === "LEADER"
+        ? prisma.card.findMany({
+            where: {
+              archived: true,
+              column: { projectId },
+              OR: [{ archivedAt: null }, { archivedAt: { gte: cutoff } }],
+            },
+            orderBy: [{ archivedAt: "desc" }, { updatedAt: "desc" }],
+            include: {
+              creator: { select: { id: true, name: true, image: true } },
+              assignee: { select: { id: true, name: true, image: true } },
+              assignees: {
+                include: {
+                  user: { select: { id: true, name: true, image: true } },
+                },
+              },
+              _count: { select: { comments: true, attachments: true } },
+            },
+          })
+        : Promise.resolve(null),
+    ]);
 
     if (!project) {
       return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
     }
 
-    // Virtual "Arquivadas" column — only Leaders see it. Cards archived more than
-    // ARCHIVE_RETENTION_DAYS ago are hidden here but still queryable via export.
-    if (role === "LEADER") {
-      const cutoff = new Date(Date.now() - ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-      const archivedCards = await prisma.card.findMany({
-        where: {
-          archived: true,
-          column: { projectId },
-          OR: [
-            { archivedAt: null },
-            { archivedAt: { gte: cutoff } },
-          ],
-        },
-        orderBy: [{ archivedAt: "desc" }, { updatedAt: "desc" }],
-        include: {
-          creator: { select: { id: true, name: true, image: true } },
-          assignee: { select: { id: true, name: true, image: true } },
-          assignees: {
-            include: {
-              user: { select: { id: true, name: true, image: true } },
-            },
-          },
-          _count: { select: { comments: true, attachments: true } },
-        },
-      });
-
+    if (role === "LEADER" && archivedCards) {
       project.columns.push({
         id: ARCHIVED_COLUMN_ID,
         name: "Arquivadas",
