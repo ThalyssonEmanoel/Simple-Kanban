@@ -204,10 +204,10 @@ export default function Navbar({ project, onRefresh, onlineMembers = [] }) {
           </button>
 
           <button
-            onClick={handleLogout}
+            onClick={() => router.push("/")}
             className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
           >
-            Sair
+            Sair do projeto
           </button>
         </div>
 
@@ -323,10 +323,10 @@ export default function Navbar({ project, onRefresh, onlineMembers = [] }) {
               Métricas
             </button>
             <button
-              onClick={handleLogout}
+              onClick={() => router.push("/")}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 text-left"
             >
-              Sair
+              Sair do projeto
             </button>
           </div>
         </div>

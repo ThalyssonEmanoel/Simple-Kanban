@@ -100,7 +100,7 @@ export default function AddCard({ columnId, projectId, project, setProject, onRe
           <div className="mt-2 flex gap-2">
             <button
               type="submit"
-              className="rounded-lg bg-primary px-3 py-1.5 text-sm text-white hover:bg-primary-hover"
+              className="rounded-lg bg-[#a4d233] px-3 py-1.5 text-sm text-white hover:bg-primary"
             >
               Adicionar
             </button>
@@ -110,7 +110,7 @@ export default function AddCard({ columnId, projectId, project, setProject, onRe
                 setAdding(false);
                 setTitle("");
               }}
-              className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-200"
+              className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:bg-red-500 hover:text-white transition-colors"
             >
               Cancelar
             </button>
@@ -124,7 +124,7 @@ export default function AddCard({ columnId, projectId, project, setProject, onRe
     <div className="px-3 pb-3">
       <button
         onClick={() => setAdding(true)}
-        className="flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-gray-500 hover:bg-gray-200/50 transition-colors"
+        className="flex w-full items-center gap-1 rounded-lg px-2 py-1.5 bg-[#a4d233] text-sm text-white hover:bg-primary transition-colors"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
