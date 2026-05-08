@@ -39,6 +39,8 @@ export async function updateSession(request) {
     "/reset-password",
   ];
 
+  const publicSessionAllowedPaths = ["/forgot-password", "/reset-password"];
+
   const isPublicPath = publicPaths.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`)
   );
@@ -49,7 +51,11 @@ export async function updateSession(request) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isPublicPath) {
+  const isPublicSessionAllowedPath = publicSessionAllowedPaths.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`)
+  );
+
+  if (user && isPublicPath && !isPublicSessionAllowedPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
