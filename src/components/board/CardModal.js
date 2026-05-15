@@ -389,7 +389,7 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
         {/* Body */}
         <div className="flex flex-col md:flex-row">
           {/* Main content */}
-          <div className="flex-1 md:border-r p-4 sm:p-6">
+          <div className="flex-1 min-w-0 md:border-r p-4 sm:p-6">
             {/* Tabs */}
             <div className="mb-4 flex gap-1 rounded-lg bg-gray-100 p-1">
               {["details", "comments", "history"].map((t) => (
@@ -597,7 +597,9 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
                             </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{c.content}</p>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap break-all">
+                            {c.content}
+                          </p>
                         )}
                       </div>
                     );
