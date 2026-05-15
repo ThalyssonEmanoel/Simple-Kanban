@@ -25,6 +25,7 @@ export async function PUT(request) {
         creatorId: true,
         archived: true,
         previousColumnId: true,
+        assignees: { select: { userId: true } },
       },
     });
     if (!card) {
@@ -129,8 +130,12 @@ export async function PUT(request) {
       });
     }
 
-    // Members can only move their own cards
-    if (role === "MEMBER" && card.assigneeId !== user.id && card.creatorId !== user.id) {
+    // Members can only move cards onde sejam responsáveis (primário ou na lista multi)
+    // ou o criador. Cobre o caso de multi-responsável sem precisar promover o usuário.
+    const isAssignedToUser =
+      card.assigneeId === user.id ||
+      (Array.isArray(card.assignees) && card.assignees.some((a) => a.userId === user.id));
+    if (role === "MEMBER" && !isAssignedToUser && card.creatorId !== user.id) {
       return NextResponse.json(
         { error: "Você só pode mover cartões atribuídos a você" },
         { status: 403 }
