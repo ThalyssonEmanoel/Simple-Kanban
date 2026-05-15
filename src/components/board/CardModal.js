@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import {
   formatDate,
@@ -11,6 +11,7 @@ import {
   getInitials,
   toDateOnlyString,
   parseChecklist,
+  setChecklistItems,
   localTodayString,
 } from "@/lib/utils";
 
@@ -33,9 +34,20 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
   const [reminderError, setReminderError] = useState("");
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editingCommentText, setEditingCommentText] = useState("");
-  const [togglingChecklist, setTogglingChecklist] = useState(null);
+  const [togglingIndices, setTogglingIndices] = useState(() => new Set());
+  const [checklistSelectionMode, setChecklistSelectionMode] = useState(false);
+  const [selectedChecklistIndices, setSelectedChecklistIndices] = useState(() => new Set());
 
   const loadCard = useCallback(() => mutateCard(), [mutateCard]);
+
+  // ESC fecha o modal; cleanup garante que listeners residuais não disparem após desmontar.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   // Hydrate the editable form fields whenever a fresh card payload arrives.
   useEffect(() => {
@@ -190,9 +202,37 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
     loadCard();
   }
 
+  // Toggle individual com update otimista: a UI reflete imediatamente, a request roda em
+  // background. Sem bloquear outros cliques nem disparar onRefresh por item.
   async function handleToggleChecklist(lineIndex) {
-    if (togglingChecklist !== null) return;
-    setTogglingChecklist(lineIndex);
+    if (!card || card.archived) return;
+
+    if (checklistSelectionMode) {
+      setSelectedChecklistIndices((prev) => {
+        const next = new Set(prev);
+        if (next.has(lineIndex)) next.delete(lineIndex);
+        else next.add(lineIndex);
+        return next;
+      });
+      return;
+    }
+
+    const items = parseChecklist(card.description || "");
+    const current = items.find((it) => it.index === lineIndex);
+    if (!current) return;
+    const nextChecked = !current.checked;
+
+    const optimistic = setChecklistItems(card.description || "", [
+      { index: lineIndex, checked: nextChecked },
+    ]);
+    if (optimistic.items.length === 0) return;
+    mutateCard({ ...card, description: optimistic.description }, { revalidate: false });
+
+    setTogglingIndices((prev) => {
+      const next = new Set(prev);
+      next.add(lineIndex);
+      return next;
+    });
     try {
       const res = await fetch(`/api/cards/${cardId}`, {
         method: "PUT",
@@ -200,16 +240,65 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
         body: JSON.stringify({ toggleChecklistIndex: lineIndex }),
       });
       if (!res.ok) {
+        await mutateCard();
         const data = await res.json().catch(() => ({}));
         alert(data.error || "Não foi possível atualizar a lista.");
-        return;
       }
-      await loadCard();
-      onRefresh();
+    } catch {
+      await mutateCard();
     } finally {
-      setTogglingChecklist(null);
+      setTogglingIndices((prev) => {
+        const next = new Set(prev);
+        next.delete(lineIndex);
+        return next;
+      });
     }
   }
+
+  async function applyChecklistBatch(checked) {
+    if (!card || selectedChecklistIndices.size === 0) return;
+    const indices = Array.from(selectedChecklistIndices);
+    const updates = indices.map((index) => ({ index, checked }));
+
+    const optimistic = setChecklistItems(card.description || "", updates);
+    if (optimistic.items.length > 0) {
+      mutateCard({ ...card, description: optimistic.description }, { revalidate: false });
+    }
+
+    setTogglingIndices((prev) => {
+      const next = new Set(prev);
+      for (const i of indices) next.add(i);
+      return next;
+    });
+    setSelectedChecklistIndices(new Set());
+    setChecklistSelectionMode(false);
+
+    try {
+      const res = await fetch(`/api/cards/${cardId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checklistUpdates: updates }),
+      });
+      if (!res.ok) {
+        await mutateCard();
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Não foi possível atualizar a lista.");
+      }
+    } catch {
+      await mutateCard();
+    } finally {
+      setTogglingIndices((prev) => {
+        const next = new Set(prev);
+        for (const i of indices) next.delete(i);
+        return next;
+      });
+    }
+  }
+
+  const checklistItemCount = useMemo(
+    () => parseChecklist(card?.description || "").length,
+    [card?.description]
+  );
 
   function insertChecklistTemplate() {
     const template = "- [ ] Item 1\n- [ ] Item 2\n- [ ] Item 3";
@@ -229,8 +318,16 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
   const overdue = isOverdue(card.dueDate);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-2 pt-4 sm:p-4 sm:pt-10">
-      <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-2 pt-4 sm:p-4 sm:pt-10"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-start justify-between border-b px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex-1 min-w-0">
@@ -344,12 +441,61 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
                       </p>
                     </>
                   ) : (
-                    <DescriptionView
-                      description={card.description}
-                      onToggle={handleToggleChecklist}
-                      togglingIndex={togglingChecklist}
-                      disabled={card.archived}
-                    />
+                    <>
+                      {checklistItemCount > 0 && !card.archived && (
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          {!checklistSelectionMode ? (
+                            <button
+                              type="button"
+                              onClick={() => setChecklistSelectionMode(true)}
+                              className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                            >
+                              Selecionar vários
+                            </button>
+                          ) : (
+                            <>
+                              <span className="text-xs text-gray-500">
+                                {selectedChecklistIndices.size} selecionado{selectedChecklistIndices.size === 1 ? "" : "s"}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={selectedChecklistIndices.size === 0}
+                                onClick={() => applyChecklistBatch(true)}
+                                className="rounded-md bg-primary px-2 py-1 text-xs text-white hover:bg-primary-hover disabled:opacity-50"
+                              >
+                                Marcar
+                              </button>
+                              <button
+                                type="button"
+                                disabled={selectedChecklistIndices.size === 0}
+                                onClick={() => applyChecklistBatch(false)}
+                                className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                              >
+                                Desmarcar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setChecklistSelectionMode(false);
+                                  setSelectedChecklistIndices(new Set());
+                                }}
+                                className="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <DescriptionView
+                        description={card.description}
+                        onToggle={handleToggleChecklist}
+                        togglingIndices={togglingIndices}
+                        selectionMode={checklistSelectionMode}
+                        selectedIndices={selectedChecklistIndices}
+                        disabled={card.archived}
+                      />
+                    </>
                   )}
                 </div>
               </div>
@@ -381,8 +527,8 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
                     const canModify = isAuthor || userRole === "LEADER";
                     const isEditing = editingCommentId === c.id;
                     return (
-                      <div key={c.id} className="rounded-lg bg-gray-50 p-3">
-                        <div className="flex items-center justify-between gap-2 mb-1">
+                      <div key={c.id} className="rounded-lg bg-gray-50 p-3 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                               {c.author.image ? (
@@ -451,7 +597,7 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
                             </div>
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{c.content}</p>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{c.content}</p>
                         )}
                       </div>
                     );
@@ -679,7 +825,14 @@ export default function CardModal({ cardId, project, onClose, onRefresh, current
   );
 }
 
-function DescriptionView({ description, onToggle, togglingIndex, disabled }) {
+function DescriptionView({
+  description,
+  onToggle,
+  togglingIndices,
+  selectionMode,
+  selectedIndices,
+  disabled,
+}) {
   if (!description) {
     return (
       <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-400 min-h-[60px]">
@@ -697,42 +850,58 @@ function DescriptionView({ description, onToggle, togglingIndex, disabled }) {
     );
   }
 
-  // Render mixed content: plain lines as text, checklist lines as toggleable rows.
   const lines = description.split(/\r?\n/);
   const itemByIndex = new Map(items.map((it) => [it.index, it]));
+  const busySet = togglingIndices instanceof Set ? togglingIndices : new Set();
+  const selectedSet = selectedIndices instanceof Set ? selectedIndices : new Set();
 
   return (
     <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700 min-h-[60px] space-y-1">
       {lines.map((line, idx) => {
         const item = itemByIndex.get(idx);
         if (item) {
-          const busy = togglingIndex === idx;
+          const busy = busySet.has(idx);
+          const isSelected = selectionMode && selectedSet.has(idx);
           return (
             <label
               key={idx}
-              className={`flex items-start gap-2 rounded px-1 py-0.5 ${
-                disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer hover:bg-gray-100"
-              }`}
+              className={`flex items-start gap-2 rounded px-1 py-0.5 transition-colors ${
+                disabled
+                  ? "opacity-60 cursor-not-allowed"
+                  : "cursor-pointer hover:bg-gray-100"
+              } ${isSelected ? "bg-primary/10 ring-1 ring-primary/40" : ""}`}
             >
-              <input
-                type="checkbox"
-                checked={item.checked}
-                disabled={busy || disabled}
-                onChange={() => !disabled && onToggle(idx)}
-                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/40"
-              />
+              {selectionMode ? (
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  disabled={disabled}
+                  onChange={() => !disabled && onToggle(idx)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/40"
+                  aria-label="Selecionar item"
+                />
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={item.checked}
+                  disabled={disabled}
+                  onChange={() => !disabled && onToggle(idx)}
+                  className={`mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/40 ${
+                    busy ? "opacity-70" : ""
+                  }`}
+                />
+              )}
               <span className={item.checked ? "line-through text-gray-500" : ""}>
                 {item.text || <span className="text-gray-400">(sem texto)</span>}
               </span>
             </label>
           );
         }
-        // Preserve blank lines as small spacer for readability.
         if (line.trim() === "") {
           return <div key={idx} className="h-2" />;
         }
         return (
-          <p key={idx} className="whitespace-pre-wrap">
+          <p key={idx} className="whitespace-pre-wrap break-words">
             {line}
           </p>
         );
