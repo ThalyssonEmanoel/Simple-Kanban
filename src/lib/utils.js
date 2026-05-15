@@ -120,3 +120,25 @@ export function toggleChecklistItem(description, lineIndex) {
     item: { text, checked: !wasChecked },
   };
 }
+
+// Apply explicit checked states to multiple checklist items in one pass. Skips lines
+// whose target state matches the current state — the returned `items` array contains
+// only entries that actually changed, so callers can log them without duplication.
+export function setChecklistItems(description, updates) {
+  if (!description || !Array.isArray(updates)) return { description, items: [] };
+  const lines = description.split(/\r?\n/);
+  const changed = [];
+  for (const update of updates) {
+    const idx = Number(update?.index);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= lines.length) continue;
+    const m = lines[idx].match(CHECKLIST_LINE);
+    if (!m) continue;
+    const [, indent, mark, text] = m;
+    const wasChecked = mark.toLowerCase() === "x";
+    const nextChecked = !!update.checked;
+    if (wasChecked === nextChecked) continue;
+    lines[idx] = `${indent}- [${nextChecked ? "x" : " "}] ${text}`;
+    changed.push({ text, checked: nextChecked });
+  }
+  return { description: lines.join("\n"), items: changed };
+}

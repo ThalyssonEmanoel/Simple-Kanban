@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser, getUserRole } from "@/lib/auth";
-import { toggleChecklistItem } from "@/lib/utils";
+import { toggleChecklistItem, setChecklistItems } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -109,10 +109,21 @@ export async function PUT(request, { params }) {
       logDetails.push("título atualizado");
     }
 
-    // Checklist toggle: pass `{ toggleChecklistIndex: <lineIndex> }` to flip a single item.
-    // The description is rewritten and a dedicated activity log entry is emitted with
-    // the item text, the new state, and the actor — meeting the Feature-5 audit requirement.
-    if (data.toggleChecklistIndex !== undefined) {
+    // Checklist toggle: pass `{ toggleChecklistIndex: <lineIndex> }` to flip a single item,
+    // or `{ checklistUpdates: [{ index, checked }, ...] }` to set explicit states in batch.
+    // Each changed item still emits its own activity log entry (Feature-5 audit requirement).
+    if (Array.isArray(data.checklistUpdates) && data.checklistUpdates.length > 0) {
+      const result = setChecklistItems(card.description || "", data.checklistUpdates);
+      if (result.items.length > 0) {
+        updateData.description = result.description;
+        for (const item of result.items) {
+          extraLogs.push({
+            action: item.checked ? "CHECKLIST_CHECKED" : "CHECKLIST_UNCHECKED",
+            details: `${item.checked ? "Marcou" : "Desmarcou"} item da lista: "${item.text}"`,
+          });
+        }
+      }
+    } else if (data.toggleChecklistIndex !== undefined) {
       const idx = Number(data.toggleChecklistIndex);
       if (Number.isInteger(idx)) {
         const result = toggleChecklistItem(card.description || "", idx);

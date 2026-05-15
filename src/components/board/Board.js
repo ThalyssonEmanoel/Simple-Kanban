@@ -60,15 +60,30 @@ export default function Board({ project, setProject, filters, onCardClick, onRef
     const destCol = newColumns.find((c) => c.id === destination.droppableId);
     if (!sourceCol || !destCol) return;
 
-    const [movedCard] = sourceCol.cards.splice(source.index, 1);
+    // O DnD entrega indices da lista *filtrada*. Para refletir corretamente na lista
+    // completa (que é o que o servidor usa para `position`), localizamos o card pelo
+    // draggableId e mapeamos destination.index para o índice real via a lista visível.
+    const sourceIdx = sourceCol.cards.findIndex((c) => c.id === draggableId);
+    if (sourceIdx === -1) return;
+    const [movedCard] = sourceCol.cards.splice(sourceIdx, 1);
     if (!movedCard) return;
+
+    const visibleDest = filterCards(destCol.cards);
+    let realDestIndex;
+    if (destination.index >= visibleDest.length) {
+      realDestIndex = destCol.cards.length;
+    } else {
+      const targetCard = visibleDest[destination.index];
+      realDestIndex = destCol.cards.findIndex((c) => c.id === targetCard.id);
+      if (realDestIndex === -1) realDestIndex = destCol.cards.length;
+    }
 
     const movedCardUpdated = {
       ...movedCard,
       columnId: intoArchive ? movedCard.columnId : destination.droppableId,
       archived: intoArchive ? true : fromArchive ? false : movedCard.archived,
     };
-    destCol.cards.splice(destination.index, 0, movedCardUpdated);
+    destCol.cards.splice(realDestIndex, 0, movedCardUpdated);
 
     setProject({ ...project, columns: newColumns });
 
@@ -80,7 +95,7 @@ export default function Board({ project, setProject, filters, onCardClick, onRef
           cardId: draggableId,
           sourceColumnId: source.droppableId,
           destinationColumnId: destination.droppableId,
-          newPosition: destination.index,
+          newPosition: realDestIndex,
           projectId: project.id,
         }),
       });
